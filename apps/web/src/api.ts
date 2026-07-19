@@ -1,6 +1,7 @@
 import type { DeviceInfo, DeviceSettings, StreamStatus } from "@vr-livestream/shared";
 
-async function parse<T>(res: Response): Promise<T> {
+async function parse<T>(input: Response | Promise<Response>): Promise<T> {
+  const res = await input;
   const body = await res.json();
   if (!res.ok) {
     throw new Error(body.error ?? res.statusText);
