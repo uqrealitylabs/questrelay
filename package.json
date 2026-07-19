@@ -1,0 +1,18 @@
+{
+  "name": "vr-livestream",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev -w @vr-livestream/server",
+    "dev:web": "npm run dev -w @vr-livestream/web",
+    "build": "npm run build -w @vr-livestream/shared && npm run build -w @vr-livestream/web && npm run build -w @vr-livestream/server",
+    "test": "npm run build -w @vr-livestream/shared && npm run test -w @vr-livestream/shared && npm run test -w @vr-livestream/server && npm run test -w @vr-livestream/web",
+    "download:scrcpy": "node scripts/download-scrcpy-server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
