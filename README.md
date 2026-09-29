@@ -1,91 +1,71 @@
 # QuestRelay
 
-QuestRelay puts a Meta Quest's screen and game audio in a browser room. The wearer opens the companion app and approves capture; everyone else joins with a link. One room can show several headsets, and each headset gets its own short link when you only want to share that feed
+**Meta Quest livestreams you can watch together in a browser**
 
-The viewer can pin, focus and mute feeds, choose a layout and theme, and open Stats for nerds. The separate control room lets admins manage room access, appearance, passkeys, headset media controls and diagnostics
+QuestRelay is a self-hosted Meta Quest livestreaming system for sharing headset video and supported game audio in a browser. The wearer starts sharing in the companion app and approves capture; viewers open a link. Put several headsets in one room for a playtest or demo, or share a short `/livestream/<id>` link for one feed
 
-> [!IMPORTANT]
-> **What we have actually tested:** one Quest sent H.264 video and Opus audio to the Rust relay. A local browser showed 1280 × 720 video at 30 fps and received an audio track. Audible game audio, sync, multiple headsets, internet NAT traversal, normal release-channel installation and end-to-end latency still need live testing. “Zero latency” is not a physical or measured claim
+The browser lets each viewer pin a feed, change the layout, mute audio and choose a theme. Admins get a separate control room for public or private access, passkeys, headset video and audio controls, and the connection stats that help when a stream goes wrong. The room's animated capybara has a name, mood and accessory you can customise
 
-| If you want to… | Go to… |
-| --- | --- |
-| Understand the media path and trust boundaries | [Architecture](docs/ARCHITECTURE.md) |
-| Run a local web and relay build | [Develop locally](#develop-locally) |
-| Put the server on a Linux VM | [Deploy](#deploy) |
-| Help with the project | [Contributing](docs/CONTRIBUTING.md) and the [Code of Conduct](docs/CODE_OF_CONDUCT.md) |
+Under the hood, a Rust relay forwards H.264 video and Opus audio to WebRTC viewers without recomposing the feeds. The design aims to keep delay low; [measured latency and multi-headset capacity are still open work](#current-status)
 
-## Develop locally
+## Get it running locally
 
-You need Node.js 22+, Rust with the [mediasoup build prerequisites](https://mediasoup.org/documentation/v3/mediasoup/installation/), and three different keys of at least 32 characters. Start the relay in one terminal:
+You need Node.js 22+, Rust and the [mediasoup build prerequisites](https://mediasoup.org/documentation/v3/mediasoup/installation/). Clone the repository and install the web dependencies:
 
 ```bash
+git clone https://github.com/uqrealitylabs/questrelay.git
+cd questrelay
 npm ci
+```
+
+In your first terminal, make three different local keys and start the relay:
+
+```bash
 export QUESTRELAY_PUBLISH_KEY="$(openssl rand -hex 32)"
 export QUESTRELAY_VIEW_KEY="$(openssl rand -hex 32)"
 export QUESTRELAY_ADMIN_KEY="$(openssl rand -hex 32)"
-cargo run --manifest-path backend/Cargo.toml
+printf 'Admin key: %s\nPublisher key: %s\n' "$QUESTRELAY_ADMIN_KEY" "$QUESTRELAY_PUBLISH_KEY"
+npm run dev:server
 ```
 
-Start the web app in another terminal:
-
-```bash
-npm run dev:web
-```
-
-Open the address printed by Vite. The browser requests `/api/*` and `/ws/*` through its local proxy to the Rust relay. Sign in at `/admin` with the admin key from the first terminal. You can make a room public by link or give it a private access code; new rooms start private
+Keep those printed keys private. In a second terminal, run `npm run dev:web` and open the address Vite prints. Sign in at `/admin` with the admin key, then make the room public by link or set a private access code. New rooms start private
 
 <details>
-<summary>Build the Quest app for a USB development test</summary>
+<summary>Connect a Quest for a USB development test</summary>
 
-Use JDK 17, Gradle 9.6, Android SDK platform 35 and ADB:
+With JDK 17, Gradle 9.6, Android SDK platform 35 and ADB installed, run this from the repository root:
 
 ```bash
-cd quest/app
-gradle :app:testDebugUnitTest :app:assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+gradle -p quest/app :app:testDebugUnitTest :app:assembleDebug
+adb install -r quest/app/app/build/outputs/apk/debug/app-debug.apk
 adb reverse tcp:8788 tcp:8788
 ```
 
-In the debug app, set the relay URL to `ws://127.0.0.1:8788/ws/relay` and enter the publisher key. Start sharing and accept the headset's screen and audio prompts. Developer Mode and ADB are only part of this development path; a normal install needs a signed build through a supported [Meta release channel](https://developers.meta.com/horizon/resources/publish-release-channels/)
+In the debug app, set the relay URL to `ws://127.0.0.1:8788/ws/relay` and enter the publisher key printed earlier. Start sharing and approve the Quest's capture prompts. A normal user install will need a signed app distributed through a supported [Meta release channel](https://developers.meta.com/horizon/resources/publish-release-channels/); the USB route is for development
 
 </details>
 
-## Deploy
+## Where to work
 
-QuestRelay needs a long-running Linux server with a public IP. An [OCI Always Free A1 VM](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm) can be a starting point, subject to regional capacity and its free-tier limits. It is one bounded server, so test real headset and viewer load before increasing the limits in `.env`
+| If you're changing… | Start here |
+| --- | --- |
+| The public room or admin experience | [`frontend/src`](frontend/src/) |
+| Room access, signalling or media forwarding | [`backend/src`](backend/src/) |
+| Headset capture or app settings | [`quest/app`](quest/app/) |
+| Deployment and release tooling | [`tools/config`](tools/config/) and [`tools/scripts`](tools/scripts/) |
 
-1. Choose a VM close to your viewers, point a DNS name to its public IP, and [install Docker Engine with Compose](https://docs.docker.com/engine/install/ubuntu/)
-2. In the cloud network rules and host firewall, allow TCP 80 and 443 plus UDP/TCP 44444. Restrict SSH to your own IP. WebRTC media goes directly to 44444; the HTTPS proxy alone cannot carry it
-3. Copy `tools/config/.env.example` to `.env`, replace both sample domain values, and generate **different** publisher, viewer and admin keys with `openssl rand -hex 32`
-4. Commit the source to release, then package and deploy it:
+The older ADB/scrcpy experiment lives in [`quest/prototype-server`](quest/prototype-server/) and is outside the current media path. [How QuestRelay works](docs/ARCHITECTURE.md) follows a feed from the headset to the browser and explains the trust boundaries
 
-```bash
-archive=$(tools/scripts/distribute.sh)
-tools/scripts/deploy.sh ubuntu@PUBLIC_IP "$archive" .env
-curl https://your-domain.example/health
-```
+## Build and check
 
-The deployment script copies `.env` on the first run; omit that argument later to keep the server's keys. It builds on the VM, waits for relay health, and keeps earlier release directories. The fixed Compose project name preserves the `relay_data` and Caddy certificate volumes. Back up `relay_data` before moving servers
+Run `npm run build` for the web app and Rust relay, or `npm test` for the shared, web, prototype and Rust tests. The Quest app has its own Gradle build in the expandable setup above. For a pull request, see the focused checks in the [contribution guide](docs/CONTRIBUTING.md)
 
-Then open `https://your-domain.example/admin`. Set the main room's access and theme, and copy the publisher key to each Quest. In the headset app, use `wss://your-domain.example/ws/relay`, start sharing and approve capture
+## Put it on a server
 
-<details>
-<summary>Run from a checkout without the deploy script</summary>
+QuestRelay needs a Linux host with a public address, HTTPS and a direct WebRTC media port. The [deployment guide](docs/DEPLOY.md) covers Docker Compose, DNS and firewall rules, keys, updates and backups. It also explains the current limits of a single relay and why some networks need a TURN service
 
-With a valid `.env`, run `docker compose -f tools/config/compose.yaml --project-directory . up -d --build --wait` on the Linux host. For a non-Docker install, build the web app with Node.js and the relay with Rust, serve `frontend/dist` through `tools/config/Caddyfile`, and keep the relay under an unprivileged account with a writable state directory
+## Current status
 
-</details>
+One Quest has sent 1280 × 720 video at 30 fps and an Opus audio track through the Rust relay to a local browser. Audible game audio, sync, several headsets at once, internet NAT traversal, normal release-channel installation and glass-to-glass latency still need live testing. The latency numbers in the architecture notes are targets, not measured results; “zero latency” is not a promise
 
-## What the system does and does not measure
-
-The Rust service forwards encoded video and audio through mediasoup without decoding or compositing them. The Quest sends its RTP packets over authenticated WSS/TCP; a lost TCP packet can delay newer media. Browser playback uses WebRTC with direct UDP when available and TCP fallback. TURN is not integrated, so restrictive networks may show the page but fail to play media
-
-The current engineering targets are p95 capture-to-display delay at or below **150 ms on an uncongested LAN** and **300 ms through a nearby internet relay**, with audio and video within 50 ms. They are targets, not results. Admin control RTT and browser network RTT are useful diagnostics, but neither measures glass-to-glass delay. [Architecture](docs/ARCHITECTURE.md#latency-and-scale) explains the bottlenecks and test plan
-
-Pushes and pull requests run checks for the code they change; release tags run the full set. The [security workflow](.github/workflows/security.yml) checks dependency changes and runs weekly. A `v*` tag publishes a server archive and checksum, **not** a signed Quest APK. [Dependabot](.github/dependabot.yml) groups routine dependency updates
-
-## Project and rights
-
-The active pieces are in [frontend](frontend/), [backend](backend/) and [quest/app](quest/app/). The old ADB/scrcpy experiment remains in [quest/prototype-server](quest/prototype-server/) for reference and is outside the live media path
-
-Read the [security policy](docs/SECURITY.md) before reporting a vulnerability or leaked key. Original QuestRelay material uses a [custom modified MIT-style licence](LICENSE), which requires separate permission for commercial use and AI training. The archived [streamer-tools component](quest/streamer-tools/) keeps its own licence
+QuestRelay is maintained by UQ Reality Labs. Before contributing, read the [contribution guide](docs/CONTRIBUTING.md), [Code of Conduct](docs/CODE_OF_CONDUCT.md) and [security policy](docs/SECURITY.md). The project uses a [custom modified MIT-style licence](LICENSE), not standard MIT; commercial use and AI training require separate permission
