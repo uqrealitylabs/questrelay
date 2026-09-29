@@ -17,7 +17,7 @@
   },
   "devDependencies": {
     "typescript": "^7.0.2",
-    "vitest": "^3.0.9"
+    "vitest": "^5.0.2"
   },
   "dependencies": {
     "@testing-library/jest-dom": "^7.0.1",
