@@ -77,4 +77,4 @@ The admin's control RTT, packet counts, bitrate, queue and recent uptime samples
 
 </details>
 
-For commands and deployment ports, see the [README](../README.md#deploy)
+For production commands and network ports, see the [deployment guide](DEPLOY.md)
