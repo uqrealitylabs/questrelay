@@ -1,7 +1,7 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { AdminSettings, RoomSettings, Theme } from "../api";
-import { Capybara } from "./Capybara";
+import { Capybara, type MascotSituation } from "./Capybara";
 import { Settings } from "./Settings";
 
 function readPersonalTheme(): Theme | null {
@@ -30,6 +30,8 @@ export function Shell({
   rooms,
   onSaved,
   report,
+  mascotSituation,
+  feedCount,
 }: {
   theme: Theme;
   active: "public" | "admin";
@@ -43,6 +45,8 @@ export function Shell({
   rooms?: Array<{ headsetId: string; settings: AdminSettings }>;
   onSaved?: (settings: AdminSettings) => void;
   report?: (message: string) => void;
+  mascotSituation?: MascotSituation;
+  feedCount?: number;
 }) {
   const [personal, updatePersonal] = useState<Theme | null>(readPersonalTheme);
   const appearance = personal ?? theme;
@@ -70,7 +74,8 @@ export function Shell({
         </span>
       </div>
       <nav className="server-rail" aria-label="Primary navigation">
-        <Capybara className="server-icon home-icon" home mascot={room?.mascot} />
+        <Capybara className="server-icon home-icon" home mascot={room?.mascot}
+          situation={mascotSituation} feedCount={feedCount} />
         <span className="rail-rule" />
         <Link
           className={`server-icon ${active === "public" ? "selected" : ""}`}

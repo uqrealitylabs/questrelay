@@ -12,15 +12,54 @@ afterEach(() => {
 it("reacts to a click and respects reduced motion", () => {
   vi.spyOn(Math, "random").mockReturnValue(0);
   vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
-  const { unmount } = render(<MemoryRouter><Capybara /></MemoryRouter>);
+  const { unmount } = render(
+    <MemoryRouter>
+      <Capybara />
+    </MemoryRouter>,
+  );
   const button = screen.getByRole("button", { name: "Give Mochi a surprise" });
   fireEvent.click(button);
   expect(button.className).toContain("cap-boop");
 
   unmount();
   vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
-  render(<MemoryRouter><Capybara /></MemoryRouter>);
+  render(
+    <MemoryRouter>
+      <Capybara />
+    </MemoryRouter>,
+  );
   const quiet = screen.getByRole("button", { name: "Give Mochi a surprise" });
   fireEvent.click(quiet);
   expect(quiet.className).not.toContain("cap-boop");
+});
+
+it("reacts when feeds arrive, leave and sound is muted", () => {
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
+  const { rerender } = render(
+    <MemoryRouter>
+      <Capybara situation="waiting" feedCount={0} />
+    </MemoryRouter>,
+  );
+  const button = screen.getByRole("button", { name: "Give Mochi a surprise" });
+
+  rerender(
+    <MemoryRouter>
+      <Capybara situation="live" feedCount={1} />
+    </MemoryRouter>,
+  );
+  expect(button.className).toContain("cap-cheer");
+
+  rerender(
+    <MemoryRouter>
+      <Capybara situation="muted" feedCount={1} />
+    </MemoryRouter>,
+  );
+  expect(button.className).toContain("cap-shush");
+
+  rerender(
+    <MemoryRouter>
+      <Capybara situation="offline" feedCount={0} />
+    </MemoryRouter>,
+  );
+  expect(button.className).toContain("cap-concern");
 });

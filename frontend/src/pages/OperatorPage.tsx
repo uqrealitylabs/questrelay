@@ -332,6 +332,8 @@ export function OperatorPage() {
     <Shell
       theme={theme}
       room={draft ?? undefined}
+      mascotSituation={message ? "error" : state ? (state.relay.healthy ? "live" : "offline") : "waiting"}
+      feedCount={state?.relay.headsets.length}
       rooms={state?.rooms}
       onSaved={signedIn ? (settings) => {
         if (settings.id === draft?.id) setDraft(settings);
@@ -395,6 +397,7 @@ export function OperatorPage() {
             <Capybara
               className="card-capybara"
               mood={message ? "oops" : "idle"}
+              situation={message ? "error" : "waiting"}
             />
             <h2>Welcome back, operator</h2>
             <p>Sign in to open the control room</p>
@@ -543,7 +546,8 @@ export function OperatorPage() {
               </div>
             ) : (
               <div className="admin-empty">
-                <Capybara className="admin-capybara" mascot={draft.mascot} />
+                <Capybara className="admin-capybara" mascot={draft.mascot}
+                  situation={state.relay.healthy ? "waiting" : "offline"} />
                 <div>
                   <h3>No headset feeds</h3>
                   <p>

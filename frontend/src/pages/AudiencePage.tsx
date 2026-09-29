@@ -90,6 +90,7 @@ export function HomePage() {
     <Shell
       theme={room?.theme ?? fallback}
       room={room ?? undefined}
+      mascotSituation={error ? "error" : room ? "waiting" : "connecting"}
       active="public"
       title="Headset lounge"
       subtitle="QuestRelay"
@@ -256,6 +257,10 @@ export function AudiencePage() {
     <Shell
       theme={room?.theme ?? fallback}
       room={room ?? undefined}
+      mascotSituation={error && !room ? "error" : connection === "Reconnecting" ? "offline"
+        : connection !== "Connected" ? "connecting" : active.length === 0 ? "waiting"
+        : audible.length === 0 ? "muted" : "live"}
+      feedCount={connection === "Connected" ? active.length : 0}
       active="public"
       roomId={id}
       title={room?.title ?? "Headset lounge"}
@@ -334,9 +339,9 @@ export function AudiencePage() {
       )}
       {room && unlocked && (
         <>
-          <div className="mobile-feeds" aria-label="Live feed shortcuts">
+          <nav className="mobile-feeds" aria-label="Live feed shortcuts">
             <FeedDock feeds={visible} pinned={pinned} selected={selected} watch={watch} togglePin={togglePin} />
-          </div>
+          </nav>
           {visible.length === 0 ? (
             <EmptyStage
               title="The lounge is quiet"
