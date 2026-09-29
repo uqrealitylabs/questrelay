@@ -11,9 +11,10 @@ use mediasoup::types::rtp_parameters::{
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::num::{NonZeroU8, NonZeroU32};
 use std::sync::{Arc, Weak};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use subtle::ConstantTimeEq;
 use tokio::sync::watch;
 
@@ -56,6 +57,8 @@ pub enum Action {
         kind: MediaKind,
         rtp_parameters: RtpParameters,
     },
+    StartIngest,
+    Stats,
     Consume {
         transport_id: TransportId,
         producer_id: ProducerId,
@@ -82,10 +85,26 @@ pub struct Request {
     pub action: Action,
 }
 
-#[derive(Default)]
 struct Headset {
     audio: Option<ProducerId>,
     video: Option<ProducerId>,
+    stats: Option<Value>,
+    connected_at: Instant,
+    stats_at: Option<Instant>,
+    control_rtt_ms: Option<u64>,
+}
+
+impl Default for Headset {
+    fn default() -> Self {
+        Self {
+            audio: None,
+            video: None,
+            stats: None,
+            connected_at: Instant::now(),
+            stats_at: None,
+            control_rtt_ms: None,
+        }
+    }
 }
 
 impl Headset {
@@ -118,6 +137,8 @@ pub struct Relay {
     rtc: WebRtcServer,
     room: Mutex<Room>,
     updates: watch::Sender<u64>,
+    started_at: Instant,
+    history: Mutex<VecDeque<Value>>,
     config: Config,
 }
 
@@ -171,14 +192,27 @@ impl Relay {
             ))
             .await?;
         let (updates, _) = watch::channel(0);
-        Ok(Arc::new(Self {
+        let relay = Arc::new(Self {
             worker,
             router,
             rtc,
             room: Mutex::new(Room::default()),
             updates,
+            started_at: Instant::now(),
+            history: Mutex::new(VecDeque::with_capacity(180)),
             config,
-        }))
+        });
+        relay.sample_health();
+        let weak = Arc::downgrade(&relay);
+        tokio::spawn(async move {
+            let mut timer = tokio::time::interval(Duration::from_secs(5));
+            timer.tick().await;
+            while let Some(relay) = weak.upgrade() {
+                timer.tick().await;
+                relay.sample_health();
+            }
+        });
+        Ok(relay)
     }
 
     pub fn healthy(&self) -> bool {
@@ -200,6 +234,59 @@ impl Relay {
             .collect();
         feeds.sort_unstable_by(|a, b| a.headset_id.cmp(&b.headset_id));
         feeds
+    }
+
+    pub fn admin_snapshot(&self) -> Value {
+        let room = self.room.lock();
+        let mut headsets: Vec<_> = room
+            .headsets
+            .iter()
+            .map(|(id, headset)| {
+                json!({
+                    "id": id,
+                    "video": headset.video,
+                    "audio": headset.audio,
+                    "stats": headset.stats,
+                    "connectedSeconds": headset.connected_at.elapsed().as_secs(),
+                    "statsAgeMs": headset.stats_at.map(|at| at.elapsed().as_millis() as u64),
+                    "controlRttMs": headset.control_rtt_ms,
+                })
+            })
+            .collect();
+        headsets.sort_unstable_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+        json!({
+            "headsets": headsets,
+            "viewers": room.viewers,
+            "healthy": self.healthy(),
+            "uptimeSeconds": self.started_at.elapsed().as_secs(),
+            "history": self.history.lock().clone(),
+            "rtcPort": self.config.rtc_port,
+            "announcedAddress": self.config.announced_address,
+        })
+    }
+
+    fn sample_health(&self) {
+        let room = self.room.lock();
+        let at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        let sample = json!({
+            "at": at,
+            "healthy": self.healthy(),
+            "headsets": room.headsets.len(),
+            "viewers": room.viewers,
+        });
+        drop(room);
+        let mut history = self.history.lock();
+        if history.len() == 180 {
+            history.pop_front();
+        }
+        history.push_back(sample);
+    }
+
+    pub fn publisher_key(&self) -> &str {
+        &self.config.publisher_key
     }
 
     pub fn subscribe(&self) -> watch::Receiver<u64> {
@@ -261,6 +348,7 @@ impl Relay {
             role,
             headset_id,
             transports: HashMap::new(),
+            ingest: None,
             producers: HashMap::new(),
             consumers: HashMap::new(),
         };
@@ -293,11 +381,51 @@ pub struct Peer {
     role: Role,
     headset_id: Option<String>,
     transports: HashMap<TransportId, (WebRtcTransport, Direction)>,
+    ingest: Option<DirectTransport>,
     producers: HashMap<MediaKind, Producer>,
     consumers: HashMap<ConsumerId, Consumer>,
 }
 
+fn ingest_parameters(kind: MediaKind) -> Result<RtpParameters> {
+    let (mime, payload_type, clock_rate, ssrc, channels, parameters) = match kind {
+        MediaKind::Video => (
+            "video/H264",
+            102,
+            90_000,
+            10_001,
+            Value::Null,
+            json!({
+                "packetization-mode": 1,
+                "profile-level-id": "42e01f",
+                "level-asymmetry-allowed": 1,
+            }),
+        ),
+        MediaKind::Audio => ("audio/opus", 111, 48_000, 10_002, json!(2), json!({})),
+    };
+    Ok(serde_json::from_value(json!({
+        "codecs": [{
+            "mimeType": mime,
+            "payloadType": payload_type,
+            "clockRate": clock_rate,
+            "channels": channels,
+            "parameters": parameters,
+            "rtcpFeedback": [],
+        }],
+        "headerExtensions": [],
+        "encodings": [{"ssrc": ssrc}],
+        "rtcp": {"cname": "questrelay", "reducedSize": true},
+    }))?)
+}
+
 impl Peer {
+    pub fn record_control_rtt(&self, elapsed: Duration) {
+        if let Some(id) = &self.headset_id
+            && let Some(headset) = self.relay.room.lock().headsets.get_mut(id)
+        {
+            headset.control_rtt_ms = Some(elapsed.as_millis() as u64);
+        }
+    }
+
     pub fn handle_closed(&mut self) {
         self.transports
             .retain(|_, (transport, _)| !transport.closed());
@@ -321,6 +449,60 @@ impl Peer {
         Ok(transport)
     }
 
+    fn register_producer(&mut self, kind: MediaKind, producer: Producer) -> ProducerId {
+        let producer_id = producer.id();
+        let headset_id = self
+            .headset_id
+            .as_ref()
+            .expect("publisher has a headset identity")
+            .clone();
+        let weak: Weak<Relay> = Arc::downgrade(&self.relay);
+        producer
+            .on_close(move || {
+                if let Some(relay) = weak.upgrade() {
+                    relay.producer_closed(&headset_id, kind, producer_id);
+                }
+            })
+            .detach();
+        if let Some(headset) = self
+            .relay
+            .room
+            .lock()
+            .headsets
+            .get_mut(self.headset_id.as_deref().unwrap_or_default())
+        {
+            *headset.track(kind) = Some(producer_id);
+        }
+        self.producers.insert(kind, producer);
+        producer_id
+    }
+
+    pub fn ingest_rtp(&self, packet: Vec<u8>) -> Result<()> {
+        ensure!(
+            (13..=1200).contains(&packet.len()) && packet[0] == 0x80,
+            "Invalid RTP packet"
+        );
+        let kind = match packet[1] & 0x7f {
+            102 => MediaKind::Video,
+            111 => MediaKind::Audio,
+            _ => bail!("Unsupported RTP payload type"),
+        };
+        let expected_ssrc: u32 = if kind == MediaKind::Video {
+            10_001
+        } else {
+            10_002
+        };
+        ensure!(
+            packet[8..12] == expected_ssrc.to_be_bytes(),
+            "Invalid RTP source"
+        );
+        let Some(Producer::Direct(producer)) = self.producers.get(&kind) else {
+            bail!("Ingest not started");
+        };
+        producer.send(packet)?;
+        Ok(())
+    }
+
     pub async fn handle(&mut self, action: Action) -> Result<Value> {
         ensure!(self.relay.healthy(), "Media worker unavailable");
         self.handle_closed();
@@ -338,6 +520,10 @@ impl Peer {
                         .values()
                         .any(|(_, owned)| *owned == direction),
                     "Transport already exists"
+                );
+                ensure!(
+                    direction != Direction::Send || self.ingest.is_none(),
+                    "Ingest already active"
                 );
                 let mut options = WebRtcTransportOptions::new_with_server(self.relay.rtc.clone());
                 options.prefer_udp = true;
@@ -375,32 +561,68 @@ impl Peer {
                     .transport(&transport_id, Some(Direction::Send))?
                     .produce(ProducerOptions::new(kind, rtp_parameters))
                     .await?;
-                let producer_id = producer.id();
-                let headset_id = self
-                    .headset_id
-                    .as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("Headset identity missing"))?
-                    .clone();
-                let weak: Weak<Relay> = Arc::downgrade(&self.relay);
-                producer
-                    .on_close(move || {
-                        if let Some(relay) = weak.upgrade() {
-                            relay.producer_closed(&headset_id, kind, producer_id);
-                        }
-                    })
-                    .detach();
-                if let Some(headset) = self
-                    .relay
-                    .room
-                    .lock()
-                    .headsets
-                    .get_mut(self.headset_id.as_deref().unwrap_or_default())
-                {
-                    *headset.track(kind) = Some(producer_id);
-                }
-                self.producers.insert(kind, producer);
+                let producer_id = self.register_producer(kind, producer);
                 self.relay.changed();
                 Ok(json!({"id": producer_id}))
+            }
+            Action::StartIngest => {
+                ensure!(self.role == Role::Publisher, "Publish access required");
+                ensure!(
+                    self.ingest.is_none()
+                        && self.producers.is_empty()
+                        && self.transports.is_empty(),
+                    "Media already published"
+                );
+                let transport = self
+                    .relay
+                    .router
+                    .create_direct_transport(DirectTransportOptions::default())
+                    .await?;
+                let video = transport
+                    .produce(ProducerOptions::new(
+                        MediaKind::Video,
+                        ingest_parameters(MediaKind::Video)?,
+                    ))
+                    .await?;
+                let audio = transport
+                    .produce(ProducerOptions::new(
+                        MediaKind::Audio,
+                        ingest_parameters(MediaKind::Audio)?,
+                    ))
+                    .await?;
+                self.ingest = Some(transport);
+                let video_id = self.register_producer(MediaKind::Video, video);
+                let audio_id = self.register_producer(MediaKind::Audio, audio);
+                self.relay.changed();
+                Ok(json!({
+                    "video": {"producerId": video_id, "payloadType": 102, "ssrc": 10001},
+                    "audio": {"producerId": audio_id, "payloadType": 111, "ssrc": 10002},
+                }))
+            }
+            Action::Stats => {
+                ensure!(self.role == Role::Publisher, "Publish access required");
+                let mut tracks = serde_json::Map::new();
+                for (kind, name) in [(MediaKind::Video, "video"), (MediaKind::Audio, "audio")] {
+                    if let Some(producer) = self.producers.get(&kind) {
+                        let stats = producer.get_stats().await?;
+                        tracks.insert(
+                            name.into(),
+                            json!({
+                                "packets": stats.iter().map(|stat| stat.packet_count).sum::<u64>(),
+                                "bytes": stats.iter().map(|stat| stat.byte_count).sum::<u64>(),
+                                "bitrate": stats.iter().map(|stat| stat.bitrate).sum::<u64>(),
+                            }),
+                        );
+                    }
+                }
+                let data = Value::Object(tracks);
+                if let Some(id) = &self.headset_id
+                    && let Some(headset) = self.relay.room.lock().headsets.get_mut(id)
+                {
+                    headset.stats = Some(data.clone());
+                    headset.stats_at = Some(Instant::now());
+                }
+                Ok(data)
             }
             Action::Consume {
                 transport_id,
@@ -519,6 +741,63 @@ mod tests {
             "transportId": "00000000-0000-0000-0000-000000000001",
         }))?;
         assert!(matches!(close.action, Action::CloseTransport { .. }));
+        let ingest: Request = serde_json::from_value(json!({"id": 9, "action": "startIngest"}))?;
+        assert!(matches!(ingest.action, Action::StartIngest));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn direct_ingest_registers_both_tracks_and_rejects_other_packets() -> Result<()> {
+        let socket = UdpSocket::bind("127.0.0.1:0")?;
+        let port = socket.local_addr()?.port();
+        drop(socket);
+        let relay = Relay::start(Config {
+            publisher_key: "publisher-secret-that-is-long-enough".into(),
+            viewer_key: "viewer-secret-that-is-also-long-enough".into(),
+            signal: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8788),
+            rtc_ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            rtc_port: port,
+            announced_address: None,
+            max_headsets: 2,
+            max_viewers: 1,
+        })
+        .await?;
+        let (mut publisher, _) = relay.join(Action::Join {
+            role: Role::Publisher,
+            key: relay.config.publisher_key.clone(),
+            headset_id: Some("quest-a".into()),
+        })?;
+        let response = publisher.handle(Action::StartIngest).await?;
+        let (mut second, _) = relay.join(Action::Join {
+            role: Role::Publisher,
+            key: relay.config.publisher_key.clone(),
+            headset_id: Some("quest-b".into()),
+        })?;
+        second.handle(Action::StartIngest).await?;
+        let (mut viewer, _) = relay.join(Action::Join {
+            role: Role::Viewer,
+            key: relay.config.viewer_key.clone(),
+            headset_id: None,
+        })?;
+        assert!(viewer.handle(Action::Stats).await.is_err());
+        assert_eq!(response["video"]["payloadType"], 102);
+        assert_eq!(response["audio"]["payloadType"], 111);
+        assert_eq!(relay.feeds().len(), 2);
+        assert!(publisher.handle(Action::StartIngest).await.is_err());
+        let mut packet = vec![0x80, 102, 0, 1, 0, 0, 0, 0, 0, 0, 0x27, 0x11, 0x65];
+        publisher.ingest_rtp(packet.clone())?;
+        let stats = publisher.handle(Action::Stats).await?;
+        assert!(stats["video"]["packets"].as_u64().is_some());
+        assert!(stats["audio"]["packets"].as_u64().is_some());
+        packet[1] = 111;
+        assert!(publisher.ingest_rtp(packet.clone()).is_err());
+        packet[1] = 102;
+        packet[0] = 0x90;
+        assert!(publisher.ingest_rtp(packet).is_err());
+        drop(publisher);
+        assert_eq!(relay.feeds().len(), 1);
+        drop(second);
+        assert!(relay.feeds().is_empty());
         Ok(())
     }
 
