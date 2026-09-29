@@ -1,6 +1,5 @@
 use anyhow::{Context, Result, ensure};
 use parking_lot::Mutex;
-use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -78,7 +77,7 @@ impl Settings {
     fn new() -> Self {
         const ALPHABET: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
         let mut bytes = [0u8; 6];
-        rand::rng().fill_bytes(&mut bytes);
+        rand::fill(&mut bytes[..]);
         Self {
             id: bytes
                 .iter()
@@ -430,7 +429,7 @@ impl Site {
 
 pub(crate) fn random_token() -> String {
     let mut bytes = [0u8; 32];
-    rand::rng().fill_bytes(&mut bytes);
+    rand::fill(&mut bytes[..]);
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 

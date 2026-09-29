@@ -4,23 +4,53 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      npm-minor-and-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
   - package-ecosystem: cargo
     directory: /backend
     schedule:
       interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      cargo-minor-and-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
   - package-ecosystem: gradle
     directory: /quest/app
     schedule:
       interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      gradle-minor-and-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      github-actions-minor-and-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
   - package-ecosystem: docker
     directory: /backend
     schedule:
       interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      backend-images-minor-and-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
   - package-ecosystem: docker
     directory: /frontend
     schedule:
       interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      frontend-images-minor-and-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
