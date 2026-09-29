@@ -12,7 +12,25 @@ permissions:
   contents: read
 
 jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      npm: ${{ steps.paths.outputs.npm_audit }}
+      rust: ${{ steps.paths.outputs.rust_audit }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: paths
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: tools/scripts/changes.sh >> "$GITHUB_OUTPUT"
+
   npm:
+    needs: detect
+    if: needs.detect.outputs.npm == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -22,9 +40,17 @@ jobs:
       - run: npm audit --audit-level=high
 
   rust:
+    needs: detect
+    if: needs.detect.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo install cargo-audit --locked
+      - id: audit-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: cargo-audit-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/security.yml') }}
+      - if: steps.audit-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-audit --locked
       - run: cargo audit --file backend/Cargo.lock

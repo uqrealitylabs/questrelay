@@ -10,5 +10,5 @@ COPY frontend frontend
 RUN npm run build -w @questrelay/shared && npm run build -w @questrelay/web
 
 FROM caddy:2-alpine
-COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY tools/config/Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /src/frontend/dist /srv
