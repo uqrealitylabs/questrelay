@@ -1,7 +1,13 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { defaultDeviceSettings } from "@questrelay/shared";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defaultDeviceSettings } from "@vr-livestream/shared";
 import { OperatorPage } from "./OperatorPage";
 
 vi.mock("../api", () => ({
@@ -29,7 +35,10 @@ describe("OperatorPage", () => {
     vi.mocked(api.clearCache).mockReset();
     vi.mocked(api.startStream).mockReset();
     vi.mocked(api.saveDevice).mockReset();
-    vi.stubGlobal("confirm", vi.fn(() => true));
+    vi.stubGlobal(
+      "confirm",
+      vi.fn(() => true),
+    );
   });
 
   it("lists devices and can clear the device cache", async () => {
@@ -54,8 +63,12 @@ describe("OperatorPage", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByTestId("device-row-192.168.1.10:5555")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /clear cached devices/i }));
+    expect(
+      await screen.findByTestId("device-row-192.168.1.10:5555"),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: /clear cached devices/i }),
+    );
     await waitFor(() => expect(api.clearCache).toHaveBeenCalled());
   });
 
@@ -96,7 +109,9 @@ describe("OperatorPage", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /start stream/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /start stream/i }),
+    );
     await waitFor(() =>
       expect(api.startStream).toHaveBeenCalledWith(
         "192.168.1.10:5555",

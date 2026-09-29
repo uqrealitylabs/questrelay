@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QuestRelay — dummy headset preview</title>
+    <style>
+      .room-titlebar::after { content: "DEMO"; font-size: 9px; padding: 1px 5px; border: 1px solid #555763; border-radius: 3px; margin-left: 6px; }
+      .room-feed:nth-child(1) .room-feed-preview { background: url("./scene.svg") center / cover; }
+      .room-feed:nth-child(2) .room-feed-preview { background: url("./world.svg") center / cover; }
+      .room-feed:nth-child(-n + 2) .room-avatar { display: none; }
+      .room-feed:nth-child(-n + 2) .room-watch { opacity: 1; }
+      .room-feed:nth-child(3) .room-avatar { background: #bad2bb; font-size: 0; }
+      .room-feed:nth-child(3) .room-avatar::after { content: "🌿"; font-size: 48px; }
+      .room-feed:nth-child(4) .room-avatar { background: #cbb5e4; font-size: 0; }
+      .room-feed:nth-child(4) .room-avatar::after { content: "👾"; font-size: 48px; }
+      .room-feed:nth-child(5) .room-avatar { background: #edd3b3; font-size: 0; }
+      .room-feed:nth-child(5) .room-avatar::after { content: "🦊"; font-size: 48px; }
+      .room-feed:nth-child(6) .room-avatar { background: #c2dce4; font-size: 0; }
+      .room-feed:nth-child(6) .room-avatar::after { content: "🐧"; font-size: 48px; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import { MemoryRouter } from "react-router-dom";
+      import { api } from "/src/api.ts";
+      import { AudiencePage } from "/src/pages/AudiencePage.tsx";
+      import "/src/styles.css";
+
+      function DemoPlayer({deviceId, label}) {
+        return React.createElement("div", {className: "tile"}, React.createElement("img", {src: deviceId.endsWith("1") ? "./scene.svg" : "./world.svg", alt: `${label} illustrated demo stream`, style: {width: "100%", height: "100%", objectFit: "cover"}}));
+      }
+      const labels = ["Alex", "Sam", "Jordan", "Riley", "Morgan", "Casey"];
+      api.listStreams = async () => labels.map((name, index) => ({
+        deviceId: `dummy-${index + 1}`,
+        label: name,
+        state: "streaming",
+      }));
+      createRoot(document.getElementById("root")).render(
+        React.createElement(MemoryRouter, null, React.createElement(AudiencePage, { Player: DemoPlayer })),
+      );
+    </script>
+  </body>
+</html>

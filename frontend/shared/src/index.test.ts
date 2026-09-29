@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  MAX_CONCURRENT_STREAMS,
   defaultDeviceSettings,
   deviceIdFromHostPort,
+  MAX_CONCURRENT_STREAMS,
 } from "./index.js";
 
 describe("shared defaults", () => {

@@ -1,5 +1,5 @@
 {
-  "name": "@vr-livestream/web",
+  "name": "@questrelay/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@vr-livestream/shared": "*",
+    "@questrelay/shared": "*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.4.0"

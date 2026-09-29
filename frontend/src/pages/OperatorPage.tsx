@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import {
-  defaultDeviceSettings,
   type DeviceInfo,
   type DeviceSettings,
-} from "@vr-livestream/shared";
+  defaultDeviceSettings,
+} from "@questrelay/shared";
+import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api";
 
 export function OperatorPage() {
@@ -37,7 +37,7 @@ export function OperatorPage() {
 
   const run = async (
     key: string,
-    fn: () => Promise<string | void>,
+    fn: () => Promise<string> | Promise<void>,
   ) => {
     setBusy(key);
     setMessage(null);
@@ -61,7 +61,8 @@ export function OperatorPage() {
         </Link>
       </div>
       <p className="sub">
-        Discover Quests, pair wireless debugging, start up to two view-only streams.
+        Discover Quests, pair wireless debugging, start up to two view-only
+        streams.
       </p>
 
       {message && (
@@ -85,10 +86,10 @@ export function OperatorPage() {
             type="button"
             className="danger"
             disabled={busy !== null}
-                        onClick={() => {
+            onClick={() => {
               if (
                 !confirm(
-                  "Clear cached devices? This deletes data/devices.json and resets saved favorites.",
+                  "Clear cached devices? This deletes backend/data/devices.json and resets saved favorites",
                 )
               ) {
                 return;
@@ -208,7 +209,10 @@ export function OperatorPage() {
                         onClick={() =>
                           run(`save-${d.id}`, async () => {
                             await api.saveDevice(d.id, {
-                              host: d.host === "usb" ? manual.host || d.host : d.host,
+                              host:
+                                d.host === "usb"
+                                  ? manual.host || d.host
+                                  : d.host,
                               port: d.port || 5555,
                               serial: d.serial,
                               settings: defaultDeviceSettings(settings),
@@ -258,10 +262,12 @@ export function OperatorPage() {
                           disabled={busy !== null}
                           onClick={() =>
                             run(`wifi-${d.id}`, async () => {
-                              const result = await api.enableWireless(d.serial ?? d.id);
+                              const result = await api.enableWireless(
+                                d.serial ?? d.id,
+                              );
                               return result.ok
                                 ? `Wireless ADB enabled at ${result.host}:${result.port}`
-                                : result.message ?? "Failed";
+                                : (result.message ?? "Failed");
                             })
                           }
                         >

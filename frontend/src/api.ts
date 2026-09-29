@@ -1,4 +1,8 @@
-import type { DeviceInfo, DeviceSettings, StreamStatus } from "@vr-livestream/shared";
+import type {
+  DeviceInfo,
+  DeviceSettings,
+  StreamStatus,
+} from "@questrelay/shared";
 
 async function parse<T>(input: Response | Promise<Response>): Promise<T> {
   const res = await input;
@@ -11,11 +15,18 @@ async function parse<T>(input: Response | Promise<Response>): Promise<T> {
 
 export const api = {
   listDevices: () =>
-    parse<{ devices: DeviceInfo[] }>(fetch("/api/devices")).then((b) => b.devices),
+    parse<{ devices: DeviceInfo[] }>(fetch("/api/devices")).then(
+      (b) => b.devices,
+    ),
 
   saveDevice: (
     id: string,
-    payload: { host: string; port: number; serial?: string; settings: DeviceSettings },
+    payload: {
+      host: string;
+      port: number;
+      serial?: string;
+      settings: DeviceSettings;
+    },
   ) =>
     parse<{ device: DeviceInfo }>(
       fetch(`/api/devices/${encodeURIComponent(id)}`, {
@@ -28,8 +39,10 @@ export const api = {
   clearCache: () =>
     parse<{ ok: boolean }>(fetch("/api/devices/cache", { method: "DELETE" })),
 
-  listStreams: () =>
-    parse<{ streams: StreamStatus[] }>(fetch("/api/streams")).then((b) => b.streams),
+  listStreams: (signal?: AbortSignal) =>
+    parse<{ streams: StreamStatus[] }>(fetch("/api/streams", { signal })).then(
+      (b) => b.streams,
+    ),
 
   startStream: (deviceId: string, serial?: string) =>
     parse<{ stream: StreamStatus }>(
@@ -42,7 +55,9 @@ export const api = {
 
   stopStream: (deviceId: string) =>
     parse<{ ok: boolean }>(
-      fetch(`/api/streams/${encodeURIComponent(deviceId)}`, { method: "DELETE" }),
+      fetch(`/api/streams/${encodeURIComponent(deviceId)}`, {
+        method: "DELETE",
+      }),
     ),
 
   pair: (host: string, port: number, code: string) =>
