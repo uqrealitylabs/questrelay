@@ -13,16 +13,16 @@
     "@questrelay/shared": "*",
     "cors": "^2.8.5",
     "express": "^4.21.2",
-    "ws": "^8.18.1"
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^22.13.10",
-    "@types/supertest": "^6.0.2",
+    "@types/supertest": "^7.2.1",
     "@types/ws": "^8.18.0",
-    "supertest": "^7.0.0",
-    "tsx": "^4.19.3",
+    "supertest": "^7.3.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.8.2",
     "vitest": "^3.0.9"
   }
