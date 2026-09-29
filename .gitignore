@@ -6,6 +6,11 @@ quest-mod/vendor/scrcpy-server
 .DS_Store
 *.tsbuildinfo
 backend/target/
+.env
+data/
+quest-mod/app/.gradle/
+quest-mod/app/app/build/
+quest-mod/app/build/
 .cursor
 plans/
 quest-mods/_upstream-streamer-tools/

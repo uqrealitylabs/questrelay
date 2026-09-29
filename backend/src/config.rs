@@ -10,6 +10,7 @@ pub struct Config {
     pub announced_address: Option<String>,
     pub max_headsets: usize,
     pub max_viewers: usize,
+    pub egress_budget_bps: u32,
 }
 
 impl Config {
@@ -50,6 +51,13 @@ impl Config {
             announced_address,
             max_headsets: number(&get, "QUESTRELAY_MAX_HEADSETS", 8)? as usize,
             max_viewers: number(&get, "QUESTRELAY_MAX_VIEWERS", 64)? as usize,
+            egress_budget_bps: get("QUESTRELAY_EGRESS_BUDGET_MBPS")
+                .unwrap_or_else(|| "200".into())
+                .parse::<u32>()
+                .context("QUESTRELAY_EGRESS_BUDGET_MBPS must be a positive integer")?
+                .checked_mul(1_000_000)
+                .filter(|budget| *budget > 0)
+                .context("QUESTRELAY_EGRESS_BUDGET_MBPS must be between 1 and 4294")?,
         })
     }
 }

@@ -1,8 +1,10 @@
+mod auth;
 mod config;
 mod relay;
 mod site;
 
 use anyhow::{Context, Result};
+use auth::Auth;
 use axum::Json;
 use axum::Router;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
@@ -13,19 +15,24 @@ use axum::routing::{get, post, put};
 use relay::{Action, Relay, Request, Role};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use site::{SettingsInput, Site};
+use site::{RoomAccess, SettingsInput, Site};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::TcpListener;
 use tokio::time::{interval, timeout};
+use webauthn_rs::prelude::{PublicKeyCredential, RegisterPublicKeyCredential, Uuid};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let config = config::Config::from_env()?;
     let signal = config.signal;
     let site = Site::from_env(&config.viewer_key, &config.publisher_key)?;
+    let auth_path =
+        std::env::var("QUESTRELAY_STATE_PATH").unwrap_or_else(|_| "data/site.json".into());
+    let auth_path = std::path::Path::new(&auth_path).with_file_name("auth.json");
+    let auth = Auth::open(auth_path, std::env::var("QUESTRELAY_WEBAUTHN_ORIGIN").ok())?;
     let relay = Relay::start(config).await?;
-    let state = Arc::new(AppState { relay, site });
+    let state = Arc::new(AppState { relay, site, auth });
     let app = Router::new()
         .route("/health", get(health))
         .route("/ws/relay", get(upgrade))
@@ -37,6 +44,32 @@ async fn main() -> Result<()> {
         .route("/api/admin/state", get(admin_state))
         .route("/api/admin/publisher-key", get(publisher_key))
         .route("/api/admin/settings", put(update_settings))
+        .route("/api/admin/rooms/{id}", put(update_room))
+        .route("/api/admin/headsets/{id}/media", put(update_media))
+        .route("/api/admin/auth", get(auth_state))
+        .route("/api/admin/passkeys/login/start", post(passkey_login_start))
+        .route(
+            "/api/admin/passkeys/login/finish",
+            post(passkey_login_finish),
+        )
+        .route(
+            "/api/admin/passkeys/register/start",
+            post(passkey_register_start),
+        )
+        .route(
+            "/api/admin/passkeys/register/finish",
+            post(passkey_register_finish),
+        )
+        .route(
+            "/api/admin/passkeys/{id}",
+            axum::routing::delete(remove_passkey),
+        )
+        .route("/api/admin/accounts", post(add_admin))
+        .route(
+            "/api/admin/accounts/{id}",
+            put(rename_admin).delete(remove_admin),
+        )
+        .route("/api/admin/accounts/{id}/invite", post(invite_admin))
         .with_state(state);
     let listener = TcpListener::bind(signal)
         .await
@@ -51,6 +84,7 @@ async fn main() -> Result<()> {
 struct AppState {
     relay: Arc<Relay>,
     site: Site,
+    auth: Auth,
 }
 
 type ApiError = (StatusCode, Json<Value>);
@@ -71,7 +105,7 @@ fn admin_token(headers: &HeaderMap) -> Option<&str> {
 
 fn require_admin<'a>(state: &AppState, headers: &'a HeaderMap) -> Result<&'a str, ApiError> {
     let token = admin_token(headers).unwrap_or_default();
-    if state.site.admin(token) {
+    if state.site.admin(token) || state.auth.identity(token).is_some() {
         Ok(token)
     } else {
         Err(api_error(
@@ -79,6 +113,38 @@ fn require_admin<'a>(state: &AppState, headers: &'a HeaderMap) -> Result<&'a str
             "Admin sign-in required",
         ))
     }
+}
+
+fn admin_identity(state: &AppState, headers: &HeaderMap) -> Result<(Uuid, bool), ApiError> {
+    let token = require_admin(state, headers)?;
+    let id = if state.site.admin(token) {
+        Uuid::nil()
+    } else {
+        state
+            .auth
+            .identity(token)
+            .ok_or_else(|| api_error(StatusCode::UNAUTHORIZED, "Admin sign-in required"))?
+    };
+    Ok((id, id == Uuid::nil()))
+}
+
+fn require_owner(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
+    if admin_identity(state, headers)?.1 {
+        Ok(())
+    } else {
+        Err(api_error(StatusCode::FORBIDDEN, "Owner access required"))
+    }
+}
+
+fn session_cookie(headers: &HeaderMap, token: &str) -> String {
+    let secure = headers
+        .get(header::ORIGIN)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("https://"));
+    format!(
+        "qr_admin={token}; HttpOnly; SameSite=Strict; Path=/api/admin; Max-Age=28800{}",
+        if secure { "; Secure" } else { "" }
+    )
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -97,11 +163,11 @@ async fn room(
     Path(id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Value>, ApiError> {
-    let settings = state.site.settings();
-    if settings.id != id {
-        return Err(api_error(StatusCode::NOT_FOUND, "Room not found"));
-    }
-    Ok(Json(settings.public_view()))
+    state
+        .site
+        .room_view(&id)
+        .map(Json)
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "Room not found"))
 }
 
 async fn site_info(State(state): State<Arc<AppState>>) -> Json<Value> {
@@ -140,20 +206,14 @@ async fn login(
         .site
         .login(&input.key)
         .ok_or_else(|| api_error(StatusCode::UNAUTHORIZED, "Invalid admin key"))?;
-    let secure = headers
-        .get(header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("https://"));
-    let cookie = format!(
-        "qr_admin={token}; HttpOnly; SameSite=Strict; Path=/api/admin; Max-Age=28800{}",
-        if secure { "; Secure" } else { "" }
-    );
+    let cookie = session_cookie(&headers, &token);
     Ok(([(header::SET_COOKIE, cookie)], Json(json!({"ok": true}))))
 }
 
 async fn logout(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl IntoResponse {
     if let Some(token) = admin_token(&headers) {
         state.site.logout(token);
+        state.auth.logout(token);
     }
     (
         [(
@@ -171,6 +231,7 @@ async fn admin_state(
     require_admin(&state, &headers)?;
     Ok(Json(json!({
         "settings": state.site.settings(),
+        "rooms": state.site.rooms_snapshot(),
         "relay": state.relay.admin_snapshot(),
     })))
 }
@@ -194,6 +255,199 @@ async fn update_settings(
         .update(input)
         .map_err(|error| api_error(StatusCode::BAD_REQUEST, &error.to_string()))?;
     Ok(Json(json!({"settings": settings})))
+}
+
+async fn update_room(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(input): Json<SettingsInput>,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&state, &headers)?;
+    let settings = state
+        .site
+        .update_room(&id, input)
+        .map_err(|error| api_error(StatusCode::BAD_REQUEST, &error.to_string()))?;
+    Ok(Json(json!({"settings": settings})))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MediaInput {
+    video_enabled: bool,
+    audio_enabled: bool,
+}
+
+async fn update_media(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(input): Json<MediaInput>,
+) -> Result<Json<Value>, ApiError> {
+    require_admin(&state, &headers)?;
+    state
+        .relay
+        .set_media(&id, input.video_enabled, input.audio_enabled)
+        .map_err(|error| api_error(StatusCode::NOT_FOUND, &error.to_string()))?;
+    Ok(Json(json!({"ok": true})))
+}
+
+async fn auth_state(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Json<Value> {
+    match admin_identity(&state, &headers) {
+        Ok((id, owner)) => Json(state.auth.snapshot(id, owner)),
+        Err(_) => Json(json!({"enabled": state.auth.enabled()})),
+    }
+}
+
+#[derive(Deserialize)]
+struct PasskeyName {
+    name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RegistrationInput {
+    label: String,
+    invite_token: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CredentialInput {
+    challenge_id: String,
+    credential: Value,
+}
+
+async fn passkey_login_start(
+    State(state): State<Arc<AppState>>,
+    Json(input): Json<PasskeyName>,
+) -> Result<Json<Value>, ApiError> {
+    state.auth.start_login(&input.name).map(Json).map_err(|_| {
+        api_error(
+            StatusCode::BAD_REQUEST,
+            "No passkey available for this admin",
+        )
+    })
+}
+
+async fn passkey_login_finish(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(input): Json<CredentialInput>,
+) -> Result<impl IntoResponse, ApiError> {
+    let credential: PublicKeyCredential = serde_json::from_value(input.credential)
+        .map_err(|_| api_error(StatusCode::BAD_REQUEST, "Invalid passkey response"))?;
+    let token = state
+        .auth
+        .finish_login(&input.challenge_id, credential)
+        .map_err(|_| api_error(StatusCode::UNAUTHORIZED, "Passkey verification failed"))?;
+    Ok((
+        [(header::SET_COOKIE, session_cookie(&headers, &token))],
+        Json(json!({"ok": true})),
+    ))
+}
+
+async fn passkey_register_start(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(input): Json<RegistrationInput>,
+) -> Result<Json<Value>, ApiError> {
+    let current = if input.invite_token.is_some() {
+        None
+    } else {
+        Some(admin_identity(&state, &headers)?.0)
+    };
+    state
+        .auth
+        .start_register(current, input.invite_token.as_deref(), &input.label)
+        .map(Json)
+        .map_err(|error| api_error(StatusCode::BAD_REQUEST, &error.to_string()))
+}
+
+async fn passkey_register_finish(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(input): Json<CredentialInput>,
+) -> Result<impl IntoResponse, ApiError> {
+    let credential: RegisterPublicKeyCredential = serde_json::from_value(input.credential)
+        .map_err(|_| api_error(StatusCode::BAD_REQUEST, "Invalid passkey response"))?;
+    let current = admin_identity(&state, &headers)
+        .ok()
+        .map(|identity| identity.0);
+    let token = state
+        .auth
+        .finish_register(current, &input.challenge_id, credential)
+        .map_err(|error| api_error(StatusCode::BAD_REQUEST, &error.to_string()))?;
+    Ok((
+        [(header::SET_COOKIE, session_cookie(&headers, &token))],
+        Json(json!({"ok": true})),
+    ))
+}
+
+async fn remove_passkey(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let (current, _) = admin_identity(&state, &headers)?;
+    state
+        .auth
+        .remove_key(current, &id)
+        .map_err(|error| api_error(StatusCode::BAD_REQUEST, &error.to_string()))?;
+    Ok(Json(json!({"ok": true})))
+}
+
+async fn add_admin(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(input): Json<PasskeyName>,
+) -> Result<Json<Value>, ApiError> {
+    require_owner(&state, &headers)?;
+    let (id, invite) = state
+        .auth
+        .add_admin(&input.name)
+        .map_err(|error| api_error(StatusCode::BAD_REQUEST, &error.to_string()))?;
+    Ok(Json(json!({"id": id, "inviteToken": invite})))
+}
+
+async fn rename_admin(
+    Path(id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(input): Json<PasskeyName>,
+) -> Result<Json<Value>, ApiError> {
+    require_owner(&state, &headers)?;
+    state
+        .auth
+        .rename_admin(id, &input.name)
+        .map_err(|error| api_error(StatusCode::BAD_REQUEST, &error.to_string()))?;
+    Ok(Json(json!({"ok": true})))
+}
+
+async fn remove_admin(
+    Path(id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    require_owner(&state, &headers)?;
+    state
+        .auth
+        .remove_admin(id)
+        .map_err(|error| api_error(StatusCode::BAD_REQUEST, &error.to_string()))?;
+    Ok(Json(json!({"ok": true})))
+}
+
+async fn invite_admin(
+    Path(id): Path<Uuid>,
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    require_owner(&state, &headers)?;
+    let invite = state
+        .auth
+        .invite(id)
+        .map_err(|error| api_error(StatusCode::BAD_REQUEST, &error.to_string()))?;
+    Ok(Json(json!({"inviteToken": invite})))
 }
 
 async fn upgrade(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -235,17 +489,38 @@ async fn session(mut socket: WebSocket, state: Arc<AppState>) -> Result<()> {
             ..
         }
     );
+    let published_headset = match &request.action {
+        Action::Join {
+            role: Role::Publisher,
+            headset_id,
+            ..
+        } => headset_id.clone(),
+        _ => None,
+    };
+    let mut allowed_feed = None;
     if let Action::Join {
         role: Role::Viewer,
         key,
         ..
     } = &mut request.action
     {
-        state.site.redeem(key);
+        allowed_feed = state.site.redeem(key).and_then(|access| match access {
+            RoomAccess::All => None,
+            RoomAccess::Headset(id) => Some(id),
+        });
     }
     let mut updates = state.relay.subscribe();
     let mut revocations = state.site.subscribe_revocations();
-    let (mut peer, data) = match state.relay.join(request.action) {
+    let joined = state
+        .relay
+        .join_scoped(request.action, allowed_feed)
+        .and_then(|joined| {
+            if let Some(id) = &published_headset {
+                state.site.ensure_feed_room(id)?;
+            }
+            Ok(joined)
+        });
+    let (mut peer, data) = match joined {
         Ok(joined) => joined,
         Err(error) => {
             send(
@@ -257,6 +532,9 @@ async fn session(mut socket: WebSocket, state: Arc<AppState>) -> Result<()> {
         }
     };
     send(&mut socket, json!({"id": id, "ok": true, "data": data})).await?;
+    if let Some(control) = peer.capture_control() {
+        send(&mut socket, control).await?;
+    }
 
     let mut heartbeat = interval(Duration::from_secs(30));
     heartbeat.tick().await;
@@ -295,7 +573,10 @@ async fn session(mut socket: WebSocket, state: Arc<AppState>) -> Result<()> {
                     break;
                 }
                 peer.handle_closed();
-                send(&mut socket, json!({"event": "feeds", "feeds": state.relay.feeds()})).await?;
+                send(&mut socket, json!({"event": "feeds", "feeds": peer.feeds()})).await?;
+                if let Some(control) = peer.capture_control() {
+                    send(&mut socket, control).await?;
+                }
             }
             _ = revocations.changed(), if is_viewer => {
                 break;

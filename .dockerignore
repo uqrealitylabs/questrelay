@@ -1,0 +1,13 @@
+.git
+.env
+data
+node_modules
+**/node_modules
+backend/target
+frontend/dist
+frontend/work
+quest-mod/app
+quest-mod/vendor
+quest-mod/prototype-server/data
+quest-mod/prototype-server/dist
+*.log

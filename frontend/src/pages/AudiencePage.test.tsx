@@ -1,121 +1,93 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { api, type Feed, type RoomSettings } from "../api";
+import { Viewer } from "../viewer";
 import { AudiencePage } from "./AudiencePage";
 
-vi.mock("../api", () => ({ api: { listStreams: vi.fn() } }));
-vi.mock("../components/StreamPlayer", () => ({
-  StreamPlayer: ({ deviceId }: { deviceId: string }) => (
-    <div data-testid={`stream-${deviceId}`} />
-  ),
-}));
+vi.mock("../api", () => ({ api: { room: vi.fn(), ticket: vi.fn() } }));
+vi.mock("../viewer", () => ({ Viewer: { connect: vi.fn() } }));
 
-import { api } from "../api";
+const room: RoomSettings = {
+  id: "abc123",
+  title: "Quest night",
+  isPublic: false,
+  theme: {
+    base: "dark",
+    accent: "#5865f2",
+    density: "comfortable",
+    motion: "subtle",
+  },
+};
 
-function showAudience() {
+function show() {
   return render(
-    <MemoryRouter>
-      <AudiencePage />
+    <MemoryRouter initialEntries={["/livestream/abc123"]}>
+      <Routes>
+        <Route path="/livestream/:id" element={<AudiencePage />} />
+      </Routes>
     </MemoryRouter>,
   );
 }
 
 describe("AudiencePage", () => {
-  afterEach(() => {
-    cleanup();
-    vi.unstubAllGlobals();
-  });
   beforeEach(() => {
-    const saved = new Map<string, string>();
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => saved.get(key) ?? null,
-      setItem: (key: string, value: string) => saved.set(key, value),
+    vi.mocked(api.room).mockResolvedValue(room);
+    vi.mocked(api.ticket).mockReset();
+    vi.mocked(Viewer.connect).mockReset();
+  });
+  afterEach(() => cleanup());
+
+  it("requires the admin access code before joining a private room", async () => {
+    vi.mocked(api.ticket).mockRejectedValue(new Error("Incorrect access code"));
+    show();
+    expect(await screen.findByText("Welcome to Quest night")).toBeTruthy();
+    expect(api.ticket).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Access code"), {
+      target: { value: "wrong-code" },
     });
-    vi.mocked(api.listStreams).mockReset();
+    fireEvent.click(screen.getByRole("button", { name: "Join the lounge" }));
+    await waitFor(() =>
+      expect(api.ticket).toHaveBeenCalledWith("abc123", "wrong-code"),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Incorrect access code",
+    );
   });
 
-  it("shows an actionable empty state without claiming audio support", async () => {
-    vi.mocked(api.listStreams).mockResolvedValue([]);
-    showAudience();
-    expect(await screen.findByTestId("audience-empty")).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Audio unavailable" }),
-    ).toBeDisabled();
-  });
-
-  it("only mounts selected feeds and stops them on request", async () => {
-    vi.mocked(api.listStreams).mockResolvedValue([
-      { deviceId: "a", label: "Quest A", state: "streaming" },
-      { deviceId: "b", label: "Quest B", state: "streaming" },
-      { deviceId: "c", label: "Quest C", state: "starting" },
-    ]);
-    showAudience();
-    await screen.findByTestId("audience-grid");
-    expect(screen.queryByTestId("stream-a")).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Watch stream from Quest A" }),
-    );
-    expect(screen.getByTestId("stream-a")).toBeTruthy();
-    expect(screen.queryByTestId("stream-b")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Focus Quest A" }));
-    expect(
-      screen.getByRole("button", { name: "Focus Quest A" }),
-    ).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(
-      screen.getByRole("button", { name: "Stop watching Quest A" }),
-    );
-    expect(screen.queryByTestId("stream-a")).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Watch stream from Quest C" }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Stop watching" }));
-    expect(screen.queryByTestId("stream-c")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Watch all streams" }));
-    expect(screen.getByTestId("stream-a")).toBeTruthy();
-    expect(screen.getByTestId("stream-b")).toBeTruthy();
-    expect(screen.getByTestId("stream-c")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Focus Quest B" }));
-    fireEvent.click(screen.getByRole("button", { name: "Return to grid" }));
-    expect(
-      screen.getByRole("button", { name: "Focus Quest B" }),
-    ).toHaveAttribute("aria-pressed", "false");
-  });
-
-  it("aborts an in-flight refresh when leaving the page", () => {
-    vi.mocked(api.listStreams).mockReturnValue(new Promise(() => {}));
-    const view = showAudience();
-    const signal = vi.mocked(api.listStreams).mock.calls[0][0];
-    expect(signal?.aborted).toBe(false);
-    view.unmount();
-    expect(signal?.aborted).toBe(true);
-  });
-
-  it("validates stored preferences and persists appearance changes", async () => {
-    window.localStorage.setItem(
-      "questrelay.appearance",
-      '{"theme":"unknown","density":"compact","accent":"blue"}',
-    );
-    vi.mocked(api.listStreams).mockResolvedValue([]);
-    const view = showAudience();
-    await screen.findByTestId("audience-empty");
-    expect(view.container.firstChild).toHaveAttribute("data-theme", "dark");
-    expect(view.container.firstChild).toHaveAttribute(
-      "data-density",
-      "compact",
-    );
-    fireEvent.click(screen.getByText("Appearance"));
-    fireEvent.change(screen.getByLabelText("Theme"), {
-      target: { value: "light" },
+  it("does not count a selected headset after it stops sharing", async () => {
+    let updateFeeds: (feeds: Feed[]) => void = () => {};
+    vi.mocked(api.room).mockResolvedValue({ ...room, isPublic: true });
+    vi.mocked(api.ticket).mockResolvedValue({ ticket: "viewer-ticket" });
+    vi.mocked(Viewer.connect).mockImplementation(async (_ticket, onFeeds) => {
+      updateFeeds = onFeeds;
+      return {
+        watch: vi.fn().mockResolvedValue(undefined),
+        stream: () => undefined,
+        unwatch: vi.fn(),
+        close: vi.fn(),
+      } as unknown as Viewer;
     });
-    expect(
-      JSON.parse(window.localStorage.getItem("questrelay.appearance") ?? "{}")
-        .theme,
-    ).toBe("light");
-    fireEvent.click(screen.getByRole("button", { name: "Reset appearance" }));
-    expect(view.container.firstChild).toHaveAttribute("data-theme", "dark");
-    expect(view.container.firstChild).toHaveAttribute(
-      "data-density",
-      "comfortable",
+
+    show();
+    await waitFor(() => expect(Viewer.connect).toHaveBeenCalled());
+    act(() =>
+      updateFeeds([{ headsetId: "quest-a", video: "video-1", audio: null }]),
     );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Watch stream" }),
+    );
+    expect(screen.getByText("1 headset live · 1 watching")).toBeTruthy();
+
+    act(() => updateFeeds([]));
+    expect(screen.getByText("0 headsets live · 0 watching")).toBeTruthy();
+    expect(screen.getByText(/Sharing stops when Quest sleeps/)).toBeTruthy();
   });
 });

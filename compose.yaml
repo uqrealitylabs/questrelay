@@ -1,0 +1,41 @@
+services:
+  relay:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file: .env
+    environment:
+      QUESTRELAY_SIGNAL_HOST: 0.0.0.0
+      QUESTRELAY_RTC_LISTEN_IP: 0.0.0.0
+      QUESTRELAY_RTC_ANNOUNCED_ADDRESS: ${QUESTRELAY_RTC_ANNOUNCED_ADDRESS:?Set the public relay host}
+      QUESTRELAY_WEBAUTHN_ORIGIN: https://${QUESTRELAY_DOMAIN:?Set the public web domain}
+      QUESTRELAY_STATE_PATH: /var/lib/questrelay/site.json
+    volumes:
+      - relay_data:/var/lib/questrelay
+    ports:
+      - "44444:44444/udp"
+      - "44444:44444/tcp"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    environment:
+      QUESTRELAY_DOMAIN: ${QUESTRELAY_DOMAIN:?Set the public web domain}
+      QUESTRELAY_UPSTREAM: relay:8788
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    depends_on:
+      - relay
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  relay_data:
+  caddy_data:
+  caddy_config:

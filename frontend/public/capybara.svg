@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 300" fill="none">
+  <title>Mochi the QuestRelay capybara</title>
+  <ellipse cx="182" cy="289" rx="106" ry="7" fill="#312029" opacity=".12"/>
+  <path d="M74 221c0-32 34-56 105-56s111 24 111 56v57H74v-57Z" fill="#A96548" stroke="#704732" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M91 97c-6-12-4-24 6-28 12-6 22 3 25 18l-4 20m143-13c-2-13 5-24 16-25 11-1 18 10 16 22l-8 16" fill="#BB7A52" stroke="#704732" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M99 88c-2-6 0-10 4-11 4-1 7 3 9 9m159-2c1-6 4-9 8-8 4 1 6 5 4 11" fill="#ECA49D"/>
+  <path d="M55 161c0-51 37-82 104-90 69-9 112 19 122 70 3 18 2 33 8 44 10 16 15 31 11 47-7 32-43 51-92 51h-73c-54 0-83-26-83-68l3-54Z" fill="#D89466" stroke="#704732" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M68 155c8-42 41-65 87-72-40 19-57 39-62 68" fill="#F5B882" opacity=".75"/>
+  <path d="M258 103c12 18 15 33 16 51 1 21 9 33 16 47 5 11 6 25 0 37-4 10-13 18-25 24 30-29 5-61-4-83-7-17-3-49-3-76Z" fill="#BB7954" opacity=".42"/>
+  <path d="M105 124c9-10 24-13 37-7m53 0c12-9 26-9 37-2" stroke="#88543D" stroke-width="5" stroke-linecap="round"/>
+  <path d="M112 183c22-13 56-11 82-7 30 5 60 2 81 11 20 9 30 27 26 48-5 25-32 39-79 42h-66c-37 0-59-18-59-44 0-20 5-39 15-50Z" fill="#BB7954" stroke="#965E44" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M115 209c12-21 37-26 66-22 37 6 58 2 80 9" stroke="#D8986F" stroke-width="5" stroke-linecap="round" opacity=".78"/>
+  <path d="M244 200c7-8 22-11 32-5 9 5 11 17 3 24-7 7-22 9-31 3-9-5-11-15-4-22Z" fill="#684338"/>
+  <path d="M250 202c5-4 13-5 19-3" stroke="#A87863" stroke-width="3" stroke-linecap="round" opacity=".8"/>
+  <circle cx="220" cy="219" r="2" fill="#8E5E46"/><circle cx="231" cy="228" r="2" fill="#8E5E46"/>
+  <path d="M85 259c0-12 8-19 20-19s20 7 20 19v17H85v-17Zm151 0c0-12 8-19 20-19s20 7 20 19v17h-40v-17Z" fill="#BC7852" stroke="#825039" stroke-width="4"/>
+  <path d="m99 261 1 10m13-9 1 10m136-10-1 10m14-11-1 10" stroke="#905A3E" stroke-width="3" stroke-linecap="round"/>
+  <path d="M151 75c4-5 10-8 16-8m2 9c5-6 12-9 17-9" stroke="#B97953" stroke-width="4" stroke-linecap="round"/>
+</svg>

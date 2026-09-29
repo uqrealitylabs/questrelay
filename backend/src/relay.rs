@@ -59,6 +59,15 @@ pub enum Action {
     },
     StartIngest,
     Stats,
+    CaptureStats {
+        video_enabled: bool,
+        audio_enabled: bool,
+        queue_bytes: u64,
+        target_bitrate_bps: u32,
+        width: u32,
+        height: u32,
+        fps: u32,
+    },
     Consume {
         transport_id: TransportId,
         producer_id: ProducerId,
@@ -92,6 +101,10 @@ struct Headset {
     connected_at: Instant,
     stats_at: Option<Instant>,
     control_rtt_ms: Option<u64>,
+    video_enabled: bool,
+    audio_enabled: bool,
+    capture: Option<Value>,
+    history: VecDeque<Value>,
 }
 
 impl Default for Headset {
@@ -103,6 +116,10 @@ impl Default for Headset {
             connected_at: Instant::now(),
             stats_at: None,
             control_rtt_ms: None,
+            video_enabled: true,
+            audio_enabled: true,
+            capture: None,
+            history: VecDeque::with_capacity(60),
         }
     }
 }
@@ -148,7 +165,7 @@ impl Relay {
         let worker = manager.create_worker(WorkerSettings::default()).await?;
         let mut h264 = RtpCodecParametersParameters::default();
         h264.insert("packetization-mode", 1u8)
-            .insert("profile-level-id", "42e01f")
+            .insert("profile-level-id", "42e02a")
             .insert("level-asymmetry-allowed", 1u8);
         let router = worker
             .create_router(RouterOptions::new(vec![
@@ -236,6 +253,13 @@ impl Relay {
         feeds
     }
 
+    fn feeds_for(&self, allowed_feed: Option<&str>) -> Vec<Feed> {
+        self.feeds()
+            .into_iter()
+            .filter(|feed| allowed_feed.is_none_or(|id| id == feed.headset_id))
+            .collect()
+    }
+
     pub fn admin_snapshot(&self) -> Value {
         let room = self.room.lock();
         let mut headsets: Vec<_> = room
@@ -250,6 +274,10 @@ impl Relay {
                     "connectedSeconds": headset.connected_at.elapsed().as_secs(),
                     "statsAgeMs": headset.stats_at.map(|at| at.elapsed().as_millis() as u64),
                     "controlRttMs": headset.control_rtt_ms,
+                    "videoEnabled": headset.video_enabled,
+                    "audioEnabled": headset.audio_enabled,
+                    "capture": headset.capture,
+                    "history": headset.history,
                 })
             })
             .collect();
@@ -289,6 +317,35 @@ impl Relay {
         &self.config.publisher_key
     }
 
+    pub fn set_media(&self, id: &str, video_enabled: bool, audio_enabled: bool) -> Result<()> {
+        let mut room = self.room.lock();
+        let headset = room
+            .headsets
+            .get_mut(id)
+            .ok_or_else(|| anyhow::anyhow!("Headset not connected"))?;
+        headset.video_enabled = video_enabled;
+        headset.audio_enabled = audio_enabled;
+        drop(room);
+        self.changed();
+        Ok(())
+    }
+
+    fn capture_control(&self, id: &str) -> Value {
+        let room = self.room.lock();
+        let headset = room
+            .headsets
+            .get(id)
+            .expect("joined publisher remains registered");
+        json!({
+            "event": "capture",
+            "videoEnabled": headset.video_enabled,
+            "audioEnabled": headset.audio_enabled,
+            "publishers": room.headsets.len(),
+            "viewers": room.viewers,
+            "egressBudgetBps": self.config.egress_budget_bps,
+        })
+    }
+
     pub fn subscribe(&self) -> watch::Receiver<u64> {
         self.updates.subscribe()
     }
@@ -298,7 +355,16 @@ impl Relay {
             .send_modify(|revision| *revision = revision.wrapping_add(1));
     }
 
+    #[cfg(test)]
     pub fn join(self: &Arc<Self>, action: Action) -> Result<(Peer, Value)> {
+        self.join_scoped(action, None)
+    }
+
+    pub fn join_scoped(
+        self: &Arc<Self>,
+        action: Action,
+        allowed_feed: Option<String>,
+    ) -> Result<(Peer, Value)> {
         let Action::Join {
             role,
             key,
@@ -343,17 +409,19 @@ impl Relay {
             room.viewers += 1;
         }
         drop(room);
+        self.changed();
         let peer = Peer {
             relay: Arc::clone(self),
             role,
             headset_id,
+            allowed_feed,
             transports: HashMap::new(),
             ingest: None,
             producers: HashMap::new(),
             consumers: HashMap::new(),
         };
         let data =
-            json!({"rtpCapabilities": self.router.rtp_capabilities(), "feeds": self.feeds()});
+            json!({"rtpCapabilities": self.router.rtp_capabilities(), "feeds": peer.feeds()});
         Ok((peer, data))
     }
 
@@ -380,6 +448,7 @@ pub struct Peer {
     relay: Arc<Relay>,
     role: Role,
     headset_id: Option<String>,
+    allowed_feed: Option<String>,
     transports: HashMap<TransportId, (WebRtcTransport, Direction)>,
     ingest: Option<DirectTransport>,
     producers: HashMap<MediaKind, Producer>,
@@ -396,7 +465,7 @@ fn ingest_parameters(kind: MediaKind) -> Result<RtpParameters> {
             Value::Null,
             json!({
                 "packetization-mode": 1,
-                "profile-level-id": "42e01f",
+                "profile-level-id": "42e02a",
                 "level-asymmetry-allowed": 1,
             }),
         ),
@@ -418,6 +487,14 @@ fn ingest_parameters(kind: MediaKind) -> Result<RtpParameters> {
 }
 
 impl Peer {
+    pub fn feeds(&self) -> Vec<Feed> {
+        self.relay.feeds_for(self.allowed_feed.as_deref())
+    }
+    pub fn capture_control(&self) -> Option<Value> {
+        self.headset_id
+            .as_deref()
+            .map(|id| self.relay.capture_control(id))
+    }
     pub fn record_control_rtt(&self, elapsed: Duration) {
         if let Some(id) = &self.headset_id
             && let Some(headset) = self.relay.room.lock().headsets.get_mut(id)
@@ -508,7 +585,7 @@ impl Peer {
         self.handle_closed();
         match action {
             Action::Join { .. } => bail!("Already joined"),
-            Action::ListFeeds => Ok(json!({"feeds": self.relay.feeds()})),
+            Action::ListFeeds => Ok(json!({"feeds": self.feeds()})),
             Action::CreateTransport { direction } => {
                 ensure!(
                     (direction == Direction::Send) == (self.role == Role::Publisher),
@@ -624,14 +701,64 @@ impl Peer {
                 }
                 Ok(data)
             }
+            Action::CaptureStats {
+                video_enabled,
+                audio_enabled,
+                queue_bytes,
+                target_bitrate_bps,
+                width,
+                height,
+                fps,
+            } => {
+                ensure!(self.role == Role::Publisher, "Publish access required");
+                ensure!(
+                    queue_bytes <= 64_000_000
+                        && target_bitrate_bps <= 100_000_000
+                        && width <= 16_384
+                        && height <= 16_384
+                        && fps <= 240,
+                    "Invalid capture stats"
+                );
+                if let Some(id) = &self.headset_id
+                    && let Some(headset) = self.relay.room.lock().headsets.get_mut(id)
+                {
+                    let at = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64;
+                    headset.capture = Some(json!({
+                        "videoEnabled": video_enabled,
+                        "audioEnabled": audio_enabled,
+                        "queueBytes": queue_bytes,
+                        "targetBitrateBps": target_bitrate_bps,
+                        "width": width,
+                        "height": height,
+                        "fps": fps,
+                    }));
+                    if headset.history.len() == 60 {
+                        headset.history.pop_front();
+                    }
+                    headset.history.push_back(json!({
+                        "at": at,
+                        "videoBitrate": headset.stats.as_ref()
+                            .and_then(|stats| stats["video"]["bitrate"].as_u64()).unwrap_or(0),
+                        "queueBytes": queue_bytes,
+                    }));
+                }
+                Ok(json!({"ok": true}))
+            }
             Action::Consume {
                 transport_id,
                 producer_id,
                 rtp_capabilities,
             } => {
                 ensure!(self.role == Role::Viewer, "Viewer access required");
-                let exists = self.relay.room.lock().headsets.values().any(|headset| {
-                    headset.video == Some(producer_id) || headset.audio == Some(producer_id)
+                let exists = self.relay.room.lock().headsets.iter().any(|(id, headset)| {
+                    self.allowed_feed
+                        .as_deref()
+                        .is_none_or(|allowed| allowed == id)
+                        && (headset.video == Some(producer_id)
+                            || headset.audio == Some(producer_id))
                 });
                 ensure!(exists, "Feed not found");
                 ensure!(
@@ -712,9 +839,7 @@ impl Drop for Peer {
             Role::Viewer => room.viewers -= 1,
         }
         drop(room);
-        if self.role == Role::Publisher {
-            self.relay.changed();
-        }
+        self.relay.changed();
     }
 }
 
@@ -760,6 +885,7 @@ mod tests {
             announced_address: None,
             max_headsets: 2,
             max_viewers: 1,
+            egress_budget_bps: 200_000_000,
         })
         .await?;
         let (mut publisher, _) = relay.join(Action::Join {
@@ -774,11 +900,39 @@ mod tests {
             headset_id: Some("quest-b".into()),
         })?;
         second.handle(Action::StartIngest).await?;
-        let (mut viewer, _) = relay.join(Action::Join {
-            role: Role::Viewer,
-            key: relay.config.viewer_key.clone(),
-            headset_id: None,
-        })?;
+        let (mut viewer, _) = relay.join_scoped(
+            Action::Join {
+                role: Role::Viewer,
+                key: relay.config.viewer_key.clone(),
+                headset_id: None,
+            },
+            Some("quest-a".into()),
+        )?;
+        assert_eq!(viewer.feeds().len(), 1);
+        assert_eq!(
+            viewer.handle(Action::ListFeeds).await?["feeds"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        let other = relay
+            .feeds()
+            .into_iter()
+            .find(|feed| feed.headset_id == "quest-b")
+            .expect("other feed");
+        assert!(
+            viewer
+                .handle(Action::Consume {
+                    transport_id: "00000000-0000-0000-0000-000000000000".parse()?,
+                    producer_id: other.video.expect("other video"),
+                    rtp_capabilities: serde_json::from_value(serde_json::to_value(
+                        relay.router.rtp_capabilities()
+                    )?)?,
+                })
+                .await
+                .is_err()
+        );
         assert!(viewer.handle(Action::Stats).await.is_err());
         assert_eq!(response["video"]["payloadType"], 102);
         assert_eq!(response["audio"]["payloadType"], 111);
@@ -789,6 +943,31 @@ mod tests {
         let stats = publisher.handle(Action::Stats).await?;
         assert!(stats["video"]["packets"].as_u64().is_some());
         assert!(stats["audio"]["packets"].as_u64().is_some());
+        assert_eq!(publisher.capture_control().unwrap()["publishers"], 2);
+        assert_eq!(publisher.capture_control().unwrap()["viewers"], 1);
+        relay.set_media("quest-a", false, true)?;
+        assert_eq!(publisher.capture_control().unwrap()["videoEnabled"], false);
+        publisher
+            .handle(Action::CaptureStats {
+                video_enabled: false,
+                audio_enabled: true,
+                queue_bytes: 8192,
+                target_bitrate_bps: 8_000_000,
+                width: 1920,
+                height: 1080,
+                fps: 60,
+            })
+            .await?;
+        let snapshot = relay.admin_snapshot();
+        let headset = snapshot["headsets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|headset| headset["id"] == "quest-a")
+            .unwrap();
+        assert_eq!(headset["capture"]["queueBytes"], 8192);
+        assert_eq!(headset["history"].as_array().unwrap().len(), 1);
+        assert!(relay.set_media("missing", true, true).is_err());
         packet[1] = 111;
         assert!(publisher.ingest_rtp(packet.clone()).is_err());
         packet[1] = 102;
@@ -815,6 +994,7 @@ mod tests {
             announced_address: None,
             max_headsets: 1,
             max_viewers: 1,
+            egress_budget_bps: 200_000_000,
         })
         .await?;
         assert!(

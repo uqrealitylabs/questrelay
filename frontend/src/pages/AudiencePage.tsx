@@ -1,422 +1,447 @@
-import type { StreamStatus } from "@questrelay/shared";
-import { type ComponentType, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { api } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { api, type Feed, type Mascot, type RoomSettings } from "../api";
+import { Capybara } from "../components/Capybara";
+import { Shell } from "../components/Shell";
 import { StreamPlayer } from "../components/StreamPlayer";
+import type { Viewer } from "../viewer";
 
-const preferenceKey = "questrelay.appearance";
-const defaults = { theme: "dark", density: "comfortable", accent: "violet" };
+const fallback = {
+  base: "dark" as const,
+  accent: "#5865f2",
+  density: "comfortable" as const,
+  motion: "subtle" as const,
+};
 
-function readPreferences() {
+function readPins(roomId?: string): string[] {
+  if (!roomId) return [];
   try {
-    const saved = JSON.parse(
-      window.localStorage.getItem(preferenceKey) ?? "null",
-    );
-    return {
-      theme: saved?.theme === "light" ? "light" : defaults.theme,
-      density: saved?.density === "compact" ? "compact" : defaults.density,
-      accent: saved?.accent === "blue" ? "blue" : defaults.accent,
-    };
-  } catch {
-    return defaults;
-  }
+    const saved: unknown = JSON.parse(localStorage.getItem(`questrelay-pins:${roomId}`) ?? "[]");
+    return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(id)).slice(0, 16) : [];
+  } catch { return []; }
 }
 
-function Icon({
-  name,
-}: {
-  name: "headset" | "sound" | "settings" | "end" | "grid" | "screen";
+function FeedDock({ feeds, pinned, selected, watch, togglePin }: {
+  feeds: Feed[]; pinned: string[]; selected: string[];
+  watch: (id: string) => void; togglePin: (id: string) => void;
 }) {
-  const paths = {
-    headset:
-      "M4 13v-1a8 8 0 0 1 16 0v1M4 12H3v7h4v-7H4m16 0h1v7h-4v-7h3M17 19c0 2-2 3-5 3",
-    sound: "M11 5 6 9H3v6h3l5 4V5m4 4 6 6m0-6-6 6",
-    settings: "M4 7h16M4 17h16M8 4v6m8 4v6",
-    grid: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
-    screen: "M3 4h18v13H3zM8 21h8m-4-4v4",
-    end: "M4 16v-4c5-4 11-4 16 0v4h-5v-3H9v3H4Z",
-  };
+  return <div className="side-feeds">
+    {feeds.map((feed) => {
+      const live = Boolean(feed.video || feed.audio);
+      const isPinned = pinned.includes(feed.headsetId);
+      return <div className={`side-feed-row ${live ? "" : "offline"}`} key={feed.headsetId}>
+        <button type="button" className="side-watch" aria-pressed={selected.includes(feed.headsetId)}
+          onClick={() => watch(feed.headsetId)} disabled={!live}
+          aria-label={`Watch ${feed.headsetId}`}>
+          <span className="side-avatar">{feed.headsetId.slice(0, 1).toUpperCase()}</span>
+          <span>{feed.headsetId}</span><i title={live ? "Live" : "Offline"} />
+        </button>
+        <button type="button" className="side-pin" aria-label={isPinned ? `Unpin ${feed.headsetId}` : `Pin ${feed.headsetId}`}
+          aria-pressed={isPinned} onClick={() => togglePin(feed.headsetId)} title={isPinned ? "Unpin" : "Pin"}>
+          {isPinned ? "◆" : "◇"}
+        </button>
+      </div>;
+    })}
+    {!feeds.length && <p className="sidebar-hint">Headsets appear here when they start sharing</p>}
+  </div>;
+}
+
+function EmptyStage({ title, prompt, mascot }: { title: string; prompt: string; mascot?: Mascot }) {
+  const frame = useRef<HTMLDivElement>(null);
+  const animation = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(animation.current), []);
   return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
+    <div
+      className="empty-stage"
+      ref={frame}
+      onPointerMove={(event) => {
+        if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        cancelAnimationFrame(animation.current);
+        const rect = event.currentTarget.getBoundingClientRect();
+        const x = (event.clientX - rect.left - rect.width / 2) / rect.width;
+        const y = (event.clientY - rect.top - rect.height / 2) / rect.height;
+        animation.current = requestAnimationFrame(() => {
+          frame.current?.style.setProperty("--look-x", `${x * 14}px`);
+          frame.current?.style.setProperty("--look-y", `${y * 10}px`);
+        });
+      }}
+      onPointerLeave={() => {
+        frame.current?.style.setProperty("--look-x", "0px");
+        frame.current?.style.setProperty("--look-y", "0px");
+      }}
     >
-      <path d={paths[name]} />
-    </svg>
+      <Capybara className="empty-capybara" mascot={mascot} />
+      <h2>{title}</h2>
+      <p>{prompt}</p>
+    </div>
   );
 }
 
-export function AudiencePage({
-  Player = StreamPlayer,
-}: {
-  Player?: ComponentType<{ deviceId: string; label: string }>;
-}) {
-  const [streams, setStreams] = useState<StreamStatus[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [watching, setWatching] = useState<string[]>([]);
-  const [focused, setFocused] = useState<string | null>(null);
-  const [preferences, setPreferences] = useState(readPreferences);
-  const [storageError, setStorageError] = useState(false);
-
+export function HomePage() {
+  const [room, setRoom] = useState<RoomSettings | null>(null);
+  const [error, setError] = useState("");
   useEffect(() => {
-    try {
-      window.localStorage.setItem(preferenceKey, JSON.stringify(preferences));
-      setStorageError(false);
-    } catch {
-      setStorageError(true);
-    }
-  }, [preferences]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
-    const tick = async () => {
-      try {
-        const list = await api.listStreams(controller.signal);
-        if (!cancelled) {
-          const active = list.filter(
-            (s) => s.state === "streaming" || s.state === "starting",
-          );
-          const activeIds = new Set(active.map((stream) => stream.deviceId));
-          setStreams(active);
-          setWatching((ids) => ids.filter((id) => activeIds.has(id)));
-          setFocused((id) => (id !== null && activeIds.has(id) ? id : null));
-          setError(null);
-        }
-      } catch (err) {
-        if (!cancelled) setError((err as Error).message);
-      } finally {
-        if (!cancelled) timer = setTimeout(tick, 2000);
-      }
-    };
-    void tick();
-    return () => {
-      cancelled = true;
-      controller.abort();
-      clearTimeout(timer);
-    };
+    api
+      .site()
+      .then(setRoom)
+      .catch((cause) => setError((cause as Error).message));
   }, []);
-
-  const stopWatching = (id: string) => {
-    setWatching((ids) => ids.filter((other) => other !== id));
-    if (focused === id) setFocused(null);
-  };
-
   return (
-    <div
-      className="room"
-      data-theme={preferences.theme}
-      data-density={preferences.density}
-      data-accent={preferences.accent}
+    <Shell
+      theme={room?.theme ?? fallback}
+      room={room ?? undefined}
+      active="public"
+      title="Headset lounge"
+      subtitle="QuestRelay"
+      actions={
+        <Link className="header-button" to="/admin">
+          Admin
+        </Link>
+      }
     >
-      <div className="room-titlebar">
-        <Icon name="headset" />
-        <span>QuestRelay</span>
-      </div>
-      <nav className="room-rail" aria-label="Main navigation">
-        <Link
-          to="/"
-          className="room-rail-home"
-          aria-label="QuestRelay home"
-          title="QuestRelay"
-        >
-          <Icon name="headset" />
-        </Link>
-        <span className="room-rail-divider" />
-        <a
-          href="#stage"
-          className="room-rail-session"
-          aria-label="Headset lounge"
-          title="Headset lounge"
-          aria-current="page"
-        >
-          Q
-        </a>
-        <Link
-          to="/operator"
-          className="room-rail-manage"
-          aria-label="Manage headsets"
-          title="Manage headsets"
-        >
-          +
-        </Link>
-      </nav>
-      <aside className="room-sidebar" aria-label="Session navigation">
-        <Link className="room-brand" to="/" aria-label="QuestRelay home">
-          QuestRelay{" "}
-          <span className="room-brand-chevron" aria-hidden="true">
-            ⌄
-          </span>
-        </Link>
-        <div className="room-sidebar-body">
-          <div className="room-section-label">⌄&nbsp; Your channels</div>
-          <a className="room-channel" href="#stage" aria-current="page">
-            <Icon name="headset" /> Headset lounge
-            <span className="room-count">{streams.length}</span>
-          </a>
-          <ul className="room-members" aria-label="Headsets">
-            {streams.map((stream) => (
-              <li key={stream.deviceId}>
-                <span className="room-avatar small" aria-hidden="true">
-                  {stream.label.slice(0, 1).toUpperCase()}
-                </span>
-                <span className="room-member-name" title={stream.label}>
-                  {stream.label}
-                </span>
-                <span className="room-live">
-                  {stream.state === "starting" ? "Starting" : "Live"}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {streams.length === 0 && (
-            <p className="room-sidebar-hint">
-              Headsets will appear here when an operator starts a stream
-            </p>
-          )}
-          <Link className="room-operator" to="/operator">
-            <span aria-hidden="true">＋</span> Manage headsets
+      <div className="home-content">
+        <EmptyStage
+          title="Pull up a seat"
+          prompt="Live Quest feeds appear here with game audio, ready to watch together"
+          mascot={room?.mascot}
+        />
+        {room ? (
+          <Link className="primary-button" to={`/livestream/${room.id}`}>
+            Open the lounge
           </Link>
-        </div>
-        <div className="room-session-status">
-          <span
-            className={`room-status-dot ${error ? "warning" : ""}`}
-            aria-hidden="true"
-          />
-          <div>
-            <strong>
-              {error ? "Connection interrupted" : "Audience view"}
-            </strong>
-            <small>Headset lounge</small>
-          </div>
-        </div>
-        <div className="room-profile">
-          <span className="room-avatar small" aria-hidden="true">
-            Y
-          </span>
-          <div>
-            <strong>You</strong>
-            <small>Viewer</small>
-          </div>
-        </div>
-      </aside>
-
-      <main className="room-main" id="stage">
-        <header className="room-header">
-          <div className="room-heading">
-            <span className="room-channel-icon" aria-hidden="true">
-              <Icon name="headset" />
-            </span>
-            <div>
-              <h1>Headset lounge</h1>
-              <p>
-                {streams.length} {streams.length === 1 ? "headset" : "headsets"}{" "}
-                · {watching.length} watching
-              </p>
-            </div>
-          </div>
-          <details className="room-settings">
-            <summary>
-              <Icon name="settings" />
-              <span>Appearance</span>
-            </summary>
-            <div className="room-settings-panel">
-              <h2>Make it yours</h2>
-              <label>
-                Theme
-                <select
-                  value={preferences.theme}
-                  onChange={(e) =>
-                    setPreferences({ ...preferences, theme: e.target.value })
-                  }
-                >
-                  <option value="dark">Dark</option>
-                  <option value="light">Light</option>
-                </select>
-              </label>
-              <label>
-                Tile density
-                <select
-                  value={preferences.density}
-                  onChange={(e) =>
-                    setPreferences({ ...preferences, density: e.target.value })
-                  }
-                >
-                  <option value="comfortable">Comfortable</option>
-                  <option value="compact">Compact</option>
-                </select>
-              </label>
-              <label>
-                Accent colour
-                <select
-                  value={preferences.accent}
-                  onChange={(e) =>
-                    setPreferences({ ...preferences, accent: e.target.value })
-                  }
-                >
-                  <option value="violet">Violet</option>
-                  <option value="blue">Blue</option>
-                </select>
-              </label>
-              <button type="button" onClick={() => setPreferences(defaults)}>
-                Reset appearance
-              </button>
-              <p role="status">
-                {storageError
-                  ? "Settings apply here, but this browser could not save them"
-                  : "Saved on this browser"}
-              </p>
-            </div>
-          </details>
-        </header>
-
-        {error && (
-          <p className="room-error" role="alert">
-            Couldn’t refresh headsets: {error}. Retrying automatically
+        ) : (
+          <p role={error ? "alert" : "status"}>
+            {error || "Finding your room…"}
           </p>
         )}
-        <section className="room-stage" aria-label="Headset feeds">
-          {streams.length === 0 ? (
-            <div className="room-empty" data-testid="audience-empty">
-              <div className="room-empty-symbol" aria-hidden="true">
-                <Icon name="headset" />
-              </div>
-              <h2>No one’s streaming yet</h2>
-              <p>Start a stream from Manage headsets to join the lounge</p>
-              <Link to="/operator">
-                Manage headsets <span aria-hidden="true">→</span>
-              </Link>
-            </div>
+      </div>
+    </Shell>
+  );
+}
+
+export function AudiencePage() {
+  const { id } = useParams();
+  const [room, setRoom] = useState<RoomSettings | null>(null);
+  const [accessCode, setAccessCode] = useState("");
+  const [unlocked, setUnlocked] = useState(false);
+  const [feeds, setFeeds] = useState<Feed[]>([]);
+  const [selected, setSelected] = useState<string[]>(() => readPins(id));
+  const [pinned, setPinned] = useState<string[]>(() => readPins(id));
+  const [audible, setAudible] = useState<string[]>([]);
+  const [layout, setLayout] = useState<"grid" | "compact" | "theatre">("grid");
+  const [focused, setFocused] = useState<string | null>(null);
+  const [viewer, setViewer] = useState<Viewer | null>(null);
+  const [, setRevision] = useState(0);
+  const [connection, setConnection] = useState("Finding room");
+  const [error, setError] = useState("");
+  const viewerRef = useRef<Viewer | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const details = await api.room(id);
+        if (!alive) return;
+        setRoom(details);
+        if (details.isPublic) setUnlocked(true);
+        setError("");
+      } catch (cause) {
+        if (alive) setError((cause as Error).message);
+      }
+    };
+    void load();
+    const timer = window.setInterval(load, 15_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [id]);
+
+  useEffect(() => {
+    const feedId = room?.headsetId;
+    if (feedId) setSelected((ids) => ids.includes(feedId) ? ids : [...ids, feedId]);
+  }, [room?.headsetId]);
+
+  useEffect(() => {
+    if (!id || !unlocked) return;
+    let alive = true;
+    let retry: number;
+    const connect = async () => {
+      setConnection("Connecting");
+      try {
+        const { ticket } = await api.ticket(id, accessCode);
+        if (!alive) return;
+        const { Viewer } = await import("../viewer");
+        const instance = await Viewer.connect(
+          ticket,
+          setFeeds,
+          () => setRevision((value) => value + 1),
+          () => {
+            if (!alive) return;
+            viewerRef.current = null;
+            setViewer(null);
+            setConnection("Reconnecting");
+            retry = window.setTimeout(connect, 2_000);
+          },
+        );
+        if (!alive) {
+          instance.close();
+          return;
+        }
+        viewerRef.current = instance;
+        setViewer(instance);
+        setConnection("Connected");
+        setError("");
+      } catch (cause) {
+        if (!alive) return;
+        const message = (cause as Error).message;
+        setError(message);
+        if (/access code|access attempts|Room not found/i.test(message)) {
+          setUnlocked(false);
+          setConnection("Access required");
+        } else {
+          setConnection("Reconnecting");
+          retry = window.setTimeout(connect, 2_000);
+        }
+      }
+    };
+    void connect();
+    return () => {
+      alive = false;
+      clearTimeout(retry);
+      viewerRef.current?.close();
+      viewerRef.current = null;
+    };
+  }, [id, unlocked, accessCode]);
+
+  useEffect(() => {
+    if (!viewer) return;
+    for (const feedId of selected) {
+      void viewer
+        .watch(feedId)
+        .catch((cause) => setError((cause as Error).message));
+    }
+  }, [viewer, selected]);
+
+  const leave = (feedId: string) => {
+    viewer?.unwatch(feedId);
+    setSelected((ids) => ids.filter((candidate) => candidate !== feedId));
+    setAudible((ids) => ids.filter((candidate) => candidate !== feedId));
+    if (focused === feedId) setFocused(null);
+  };
+  const watch = (feedId: string) =>
+    setSelected((ids) => (ids.includes(feedId) ? ids : [...ids, feedId]));
+  const active = feeds.filter((feed) => feed.video || feed.audio);
+  const waiting = [...new Set([...pinned, ...(room?.headsetId ? [room.headsetId] : [])])];
+  const visible = [...active, ...waiting.filter((feedId) => !active.some((feed) => feed.headsetId === feedId))
+    .map((headsetId) => ({ headsetId, video: null, audio: null }))].sort((left, right) => {
+      const leftPin = pinned.indexOf(left.headsetId);
+      const rightPin = pinned.indexOf(right.headsetId);
+      if (leftPin !== -1 || rightPin !== -1) return (leftPin === -1 ? 999 : leftPin) - (rightPin === -1 ? 999 : rightPin);
+      return Number(selected.includes(right.headsetId)) - Number(selected.includes(left.headsetId));
+    });
+  const togglePin = (feedId: string) => {
+    const next = pinned.includes(feedId) ? pinned.filter((id) => id !== feedId) : [...pinned, feedId];
+    setPinned(next);
+    try { localStorage.setItem(`questrelay-pins:${id}`, JSON.stringify(next)); } catch { /* Browsing still works without storage */ }
+    if (!pinned.includes(feedId) && active.some((feed) => feed.headsetId === feedId)) watch(feedId);
+  };
+  const watching = selected.filter((feedId) =>
+    active.some((feed) => feed.headsetId === feedId),
+  ).length;
+  const shareUrl = location.href;
+
+  return (
+    <Shell
+      theme={room?.theme ?? fallback}
+      room={room ?? undefined}
+      active="public"
+      roomId={id}
+      title={room?.title ?? "Headset lounge"}
+      subtitle={`${active.length} ${active.length === 1 ? "headset" : "headsets"} live · ${watching} watching`}
+      sidebar={
+        <>
+          <p className="nav-caption feeds-caption">
+            Live headsets <span>{active.length}</span>
+          </p>
+          <FeedDock feeds={visible} pinned={pinned} selected={selected} watch={watch} togglePin={togglePin} />
+          <p className="sidebar-hint">Pin a feed to keep it here and reconnect automatically</p>
+        </>
+      }
+      actions={
+        <>
+          <span
+            className={`connection-label ${connection === "Connected" ? "online" : ""}`}
+          >
+            <i />
+            {connection}
+          </span>
+          <button
+            className="header-button"
+            type="button"
+            onClick={() =>
+              void navigator.clipboard
+                .writeText(shareUrl)
+                .catch(() => setError("Could not copy link"))
+            }
+          >
+            Copy link
+          </button>
+        </>
+      }
+    >
+      {error && (
+        <div className="notice" role="alert">
+          {error}
+        </div>
+      )}
+      {!room && !error && (
+        <div className="loading-view" role="status">
+          Finding the room…
+        </div>
+      )}
+      {room && !unlocked && !room.isPublic && (
+        <div className="access-wrap">
+          <div className="access-card">
+            <Capybara className="card-capybara" mascot={room.mascot} />
+            <h2>Welcome to {room.title}</h2>
+            <p>
+              This lounge is private. Ask the room admin for its access code
+            </p>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                setUnlocked(true);
+                setError("");
+              }}
+            >
+              <label htmlFor="access-code">Access code</label>
+              <input
+                id="access-code"
+                type="password"
+                value={accessCode}
+                onChange={(event) => setAccessCode(event.target.value)}
+                autoComplete="off"
+                required
+              />
+              <button className="primary-button" type="submit">
+                Join the lounge
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+      {room && unlocked && (
+        <>
+          <div className="mobile-feeds" aria-label="Live feed shortcuts">
+            <FeedDock feeds={visible} pinned={pinned} selected={selected} watch={watch} togglePin={togglePin} />
+          </div>
+          {visible.length === 0 ? (
+            <EmptyStage
+              title="The lounge is quiet"
+              prompt="Wake the headset, open QuestRelay, and tap Start sharing. Sharing stops when Quest sleeps"
+              mascot={room.mascot}
+            />
           ) : (
-            <div
-              className={`room-grid ${focused ? "has-focus" : ""}`}
+            <section
+              className={`feed-grid layout-${layout} ${focused ? "has-focus" : ""}`}
+              aria-label="Live Quest feeds"
               data-testid="audience-grid"
             >
-              {streams.map((stream) => {
-                const isWatching = watching.includes(stream.deviceId);
-                return (
-                  <article
-                    className={`room-feed ${focused === stream.deviceId ? "is-focused" : ""}`}
-                    key={stream.deviceId}
-                    aria-label={stream.label}
-                  >
-                    {isWatching ? (
-                      <Player deviceId={stream.deviceId} label={stream.label} />
-                    ) : (
-                      <div className="room-feed-preview">
-                        <span className="room-avatar" aria-hidden="true">
-                          {stream.label.slice(0, 1).toUpperCase()}
-                        </span>
-                        <button
-                          type="button"
-                          className="room-watch"
-                          onClick={() =>
-                            setWatching((ids) => [...ids, stream.deviceId])
-                          }
-                        >
-                          Watch stream
-                          <span className="sr-only"> from {stream.label}</span>
-                        </button>
-                      </div>
-                    )}
-                    <span className="room-feed-status">
-                      {stream.state === "starting" ? "Starting" : "Live"}
-                    </span>
-                    <div className="room-feed-bar">
-                      <strong>{stream.label}</strong>
-
-                      {isWatching && (
-                        <div className="room-feed-actions">
-                          <button
-                            type="button"
-                            aria-label={`Focus ${stream.label}`}
-                            aria-pressed={focused === stream.deviceId}
-                            onClick={() =>
-                              setFocused(
-                                focused === stream.deviceId
-                                  ? null
-                                  : stream.deviceId,
-                              )
-                            }
-                          >
-                            Focus
-                          </button>
-                          <button
-                            type="button"
-                            aria-label={`Stop watching ${stream.label}`}
-                            onClick={() => stopWatching(stream.deviceId)}
-                          >
-                            Stop
-                          </button>
-                        </div>
-                      )}
+              {visible.map((feed) => {
+                const watching = selected.includes(feed.headsetId);
+                const stream = viewer?.stream(feed.headsetId);
+                const live = Boolean(feed.video || feed.audio);
+                if (focused && focused !== feed.headsetId) return null;
+                return watching && stream && viewer ? (
+                  <StreamPlayer
+                    key={feed.headsetId}
+                    id={feed.headsetId}
+                    label={feed.headsetId}
+                    stream={stream}
+                    viewer={viewer}
+                    focused={focused === feed.headsetId}
+                    pinned={pinned.includes(feed.headsetId)}
+                    muted={!audible.includes(feed.headsetId)}
+                    onPin={() => togglePin(feed.headsetId)}
+                    onMute={() => setAudible((ids) => ids.includes(feed.headsetId) ? ids.filter((id) => id !== feed.headsetId) : [...ids, feed.headsetId])}
+                    onFocus={() =>
+                      setFocused(
+                        focused === feed.headsetId ? null : feed.headsetId,
+                      )
+                    }
+                    onStop={() => leave(feed.headsetId)}
+                  />
+                ) : (
+                  <article key={feed.headsetId} className={`feed feed-preview ${live ? "" : "feed-offline"}`}>
+                    <div className="preview-body">
+                      <span className="preview-avatar">
+                        {feed.headsetId.slice(0, 1).toUpperCase()}
+                      </span>
+                      <h2>{feed.headsetId}</h2>
+                      <p>
+                        {!live ? "Pinned · waiting for the headset" : watching
+                          ? "Connecting video and audio…"
+                          : "Sharing a Quest view"}
+                      </p>
+                      <button
+                        type="button"
+                        className="watch-button"
+                        onClick={() => watch(feed.headsetId)}
+                        disabled={!live || watching || !viewer}
+                      >
+                        {!live ? "Offline" : watching ? "Connecting…" : "Watch stream"}
+                      </button>
+                    </div>
+                    <div className="preview-footer">
+                      <span>
+                        <i className="live-dot" /> {live ? "Live now" : "Waiting to reconnect"}
+                      </span>
+                      <button type="button" className="preview-pin" aria-pressed={pinned.includes(feed.headsetId)} onClick={() => togglePin(feed.headsetId)}>
+                        {pinned.includes(feed.headsetId) ? "◆ Pinned" : "◇ Pin"}
+                      </button>
                     </div>
                   </article>
                 );
               })}
-            </div>
+            </section>
           )}
-        </section>
-        <footer className="room-controls">
-          <div className="room-source-note">
-            <span>Video only</span>
-          </div>
-          <div className="room-control-buttons">
-            <div className="room-control-group">
-              <button
-                type="button"
-                disabled
-                aria-label="Audio unavailable"
-                title="Audio is unavailable from the current source"
-              >
-                <Icon name="sound" />
-              </button>
-              <button
-                type="button"
-                title="Watch all streams"
-                aria-label="Watch all streams"
-                disabled={streams.length === 0}
-                onClick={() =>
-                  setWatching(streams.map((stream) => stream.deviceId))
-                }
-              >
-                <Icon name="screen" />
-              </button>
-            </div>
+          <fieldset className="control-dock" aria-label="Viewing controls">
+            <span className="dock-room">
+              <i />
+              {connection}
+            </span>
+            <span className="dock-divider" />
             <button
               type="button"
-              title="Return to grid"
-              aria-label="Return to grid"
-              disabled={!focused}
-              onClick={() => setFocused(null)}
+              onClick={() => setSelected(active.map((feed) => feed.headsetId))}
+              disabled={!active.length}
             >
-              <Icon name="grid" />
+              Watch all
             </button>
+            <label className="dock-layout">Layout
+              <select aria-label="Viewing layout" value={layout} onChange={(event) => { setLayout(event.target.value as typeof layout); setFocused(null); }}>
+                <option value="grid">Grid</option><option value="compact">Compact</option><option value="theatre">Theatre</option>
+              </select>
+            </label>
+            <button type="button" onClick={() => setAudible(audible.length ? [] : selected.filter((feedId) => active.some((feed) => feed.headsetId === feedId)))}
+              disabled={!watching}>{audible.length ? "Mute all" : "Sound on"}</button>
             <button
               type="button"
-              className="room-stop"
-              aria-label="Stop watching"
-              title="Stop watching"
-              disabled={watching.length === 0}
+              className="dock-leave"
               onClick={() => {
-                setWatching([]);
+                for (const feedId of selected) viewer?.unwatch(feedId);
+                setSelected([]);
                 setFocused(null);
               }}
+              disabled={!selected.length}
             >
-              <Icon name="end" />
+              Leave streams
             </button>
-          </div>
-          <span className="room-latency">Latency not measured</span>
-        </footer>
-      </main>
-    </div>
+          </fieldset>
+        </>
+      )}
+    </Shell>
   );
 }
