@@ -3,7 +3,7 @@ set -euo pipefail
 
 mode=${1:-event}
 if (( $# > 1 )) || [[ $mode != event && $mode != --all && $mode != --paths ]]; then
-  echo 'Usage: scripts/changes.sh [--all|--paths]' >&2
+  echo 'Usage: tools/scripts/changes.sh [--all|--paths]' >&2
   exit 2
 fi
 
@@ -37,7 +37,7 @@ fi
 if [[ $web == false && $backend == false && $quest == false && $deploy == false && $npm_audit == false && $rust_audit == false ]]; then
   while IFS= read -r -d '' -u 3 path; do
     case "$path" in
-      .github/workflows/check.yml|scripts/changes.sh)
+      .github/workflows/check.yml|tools/scripts/changes.sh)
         web=true backend=true quest=true deploy=true npm_audit=true rust_audit=true ;;
       .github/workflows/security.yml)
         npm_audit=true rust_audit=true ;;
@@ -51,11 +51,11 @@ if [[ $web == false && $backend == false && $quest == false && $deploy == false 
         web=true deploy=true ;;
       backend/*)
         backend=true ;;
-      frontend/*|quest/prototype-server/*|quest/scripts/*|biome.json|biome.jsonc)
+      frontend/*|quest/prototype-server/*|quest/scripts/*|biome.json|tools/config/tsconfig.base.json)
         web=true ;;
       quest/app/*)
         quest=true ;;
-      .dockerignore|.gitignore|.env.example|compose.yaml|deploy/*|scripts/*|.github/workflows/release.yml)
+      .dockerignore|.gitignore|tools/config/.env.example|tools/config/compose.yaml|tools/config/Caddyfile|tools/scripts/*|.github/workflows/release.yml)
         deploy=true ;;
     esac
   done

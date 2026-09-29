@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$root"
 
 if [[ -n $(git status --porcelain) ]]; then
@@ -21,9 +21,9 @@ temporary=$(mktemp "$archive.XXXXXX")
 trap 'rm -f "$temporary"' EXIT
 
 git archive --format=tar --prefix=questrelay/ HEAD -- \
-  .dockerignore .env.example backend compose.yaml deploy/Caddyfile frontend \
+  .dockerignore backend frontend tools/config \
   package.json package-lock.json quest/prototype-server/package.json \
-  scripts/deploy.sh | gzip -n > "$temporary"
+  tools/scripts/deploy.sh | gzip -n > "$temporary"
 
 mv "$temporary" "$archive"
 trap - EXIT

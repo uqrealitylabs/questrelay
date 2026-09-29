@@ -18,7 +18,9 @@ expect false false false false false false README.md
 expect true false false false false false frontend/src/main.tsx
 expect false true false false false false backend/src/main.rs
 expect false false true false false false quest/app/app/build.gradle
-expect false false false true false false scripts/deploy.sh
+expect false false false true false false tools/scripts/deploy.sh
+expect false false false true false false tools/config/compose.yaml
+expect true false false false false false tools/config/tsconfig.base.json
 expect true true false false true true package-lock.json backend/Cargo.lock
 expect true true true true true true .github/workflows/check.yml
 

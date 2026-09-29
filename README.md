@@ -9,10 +9,10 @@ The viewer can pin, focus and mute feeds, choose a layout and theme, and open St
 
 | If you want to… | Go to… |
 | --- | --- |
-| Understand the media path and trust boundaries | [Architecture](ARCHITECTURE.md) |
+| Understand the media path and trust boundaries | [Architecture](docs/ARCHITECTURE.md) |
 | Run a local web and relay build | [Develop locally](#develop-locally) |
 | Put the server on a Linux VM | [Deploy](#deploy) |
-| Help with the project | [Contributing](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md) |
+| Help with the project | [Contributing](docs/CONTRIBUTING.md) and the [Code of Conduct](docs/CODE_OF_CONDUCT.md) |
 
 ## Develop locally
 
@@ -56,12 +56,12 @@ QuestRelay needs a long-running Linux server with a public IP. An [OCI Always Fr
 
 1. Choose a VM close to your viewers, point a DNS name to its public IP, and [install Docker Engine with Compose](https://docs.docker.com/engine/install/ubuntu/)
 2. In the cloud network rules and host firewall, allow TCP 80 and 443 plus UDP/TCP 44444. Restrict SSH to your own IP. WebRTC media goes directly to 44444; the HTTPS proxy alone cannot carry it
-3. Copy `.env.example` to `.env`, replace both sample domain values, and generate **different** publisher, viewer and admin keys with `openssl rand -hex 32`
+3. Copy `tools/config/.env.example` to `.env`, replace both sample domain values, and generate **different** publisher, viewer and admin keys with `openssl rand -hex 32`
 4. Commit the source to release, then package and deploy it:
 
 ```bash
-archive=$(scripts/distribute.sh)
-scripts/deploy.sh ubuntu@PUBLIC_IP "$archive" .env
+archive=$(tools/scripts/distribute.sh)
+tools/scripts/deploy.sh ubuntu@PUBLIC_IP "$archive" .env
 curl https://your-domain.example/health
 ```
 
@@ -72,7 +72,7 @@ Then open `https://your-domain.example/admin`. Set the main room's access and th
 <details>
 <summary>Run from a checkout without the deploy script</summary>
 
-With a valid `.env`, run `docker compose up -d --build --wait` on the Linux host. For a non-Docker install, build the web app with Node.js and the relay with Rust, serve `frontend/dist` through `deploy/Caddyfile`, and keep the relay under an unprivileged account with a writable state directory
+With a valid `.env`, run `docker compose -f tools/config/compose.yaml --project-directory . up -d --build --wait` on the Linux host. For a non-Docker install, build the web app with Node.js and the relay with Rust, serve `frontend/dist` through `tools/config/Caddyfile`, and keep the relay under an unprivileged account with a writable state directory
 
 </details>
 
@@ -80,7 +80,7 @@ With a valid `.env`, run `docker compose up -d --build --wait` on the Linux host
 
 The Rust service forwards encoded video and audio through mediasoup without decoding or compositing them. The Quest sends its RTP packets over authenticated WSS/TCP; a lost TCP packet can delay newer media. Browser playback uses WebRTC with direct UDP when available and TCP fallback. TURN is not integrated, so restrictive networks may show the page but fail to play media
 
-The current engineering targets are p95 capture-to-display delay at or below **150 ms on an uncongested LAN** and **300 ms through a nearby internet relay**, with audio and video within 50 ms. They are targets, not results. Admin control RTT and browser network RTT are useful diagnostics, but neither measures glass-to-glass delay. [Architecture](ARCHITECTURE.md#latency-and-scale) explains the bottlenecks and test plan
+The current engineering targets are p95 capture-to-display delay at or below **150 ms on an uncongested LAN** and **300 ms through a nearby internet relay**, with audio and video within 50 ms. They are targets, not results. Admin control RTT and browser network RTT are useful diagnostics, but neither measures glass-to-glass delay. [Architecture](docs/ARCHITECTURE.md#latency-and-scale) explains the bottlenecks and test plan
 
 Pushes and pull requests run checks for the code they change; release tags run the full set. The [security workflow](.github/workflows/security.yml) checks dependency changes and runs weekly. A `v*` tag publishes a server archive and checksum, **not** a signed Quest APK. [Dependabot](.github/dependabot.yml) groups routine dependency updates
 
@@ -88,4 +88,4 @@ Pushes and pull requests run checks for the code they change; release tags run t
 
 The active pieces are in [frontend](frontend/), [backend](backend/) and [quest/app](quest/app/). The old ADB/scrcpy experiment remains in [quest/prototype-server](quest/prototype-server/) for reference and is outside the live media path
 
-Read the [security policy](SECURITY.md) before reporting a vulnerability or leaked key. Original QuestRelay material uses a [custom modified MIT-style licence](LICENSE), which requires separate permission for commercial use and AI training. The archived [streamer-tools component](quest/streamer-tools/) keeps its own licence
+Read the [security policy](docs/SECURITY.md) before reporting a vulnerability or leaked key. Original QuestRelay material uses a [custom modified MIT-style licence](LICENSE), which requires separate permission for commercial use and AI training. The archived [streamer-tools component](quest/streamer-tools/) keeps its own licence

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if (( $# < 2 || $# > 3 )); then
-  echo "Usage: scripts/deploy.sh <ssh-target> <release-archive> [env-file]" >&2
+  echo "Usage: tools/scripts/deploy.sh <ssh-target> <release-archive> [env-file]" >&2
   exit 2
 fi
 
@@ -10,7 +10,7 @@ remote=$1
 archive=$2
 name=$(basename "$archive")
 if [[ ! $name =~ ^questrelay-server-[A-Za-z0-9._-]+\.tar\.gz$ || ! -f $archive ]]; then
-  echo "Pass an archive created by scripts/distribute.sh" >&2
+  echo "Pass an archive created by tools/scripts/distribute.sh" >&2
   exit 2
 fi
 
@@ -46,8 +46,8 @@ fi
 
 ln -sfn "$base/.env" "$release/.env"
 cd "$release"
-docker compose --project-name questrelay config --quiet
-docker compose --project-name questrelay up -d --build --wait --wait-timeout 180
+docker compose -f tools/config/compose.yaml --project-directory . --project-name questrelay config --quiet
+docker compose -f tools/config/compose.yaml --project-directory . --project-name questrelay up -d --build --wait --wait-timeout 180
 ln -sfnT "$release" "$base/current"
 printf 'QuestRelay deployed from %s\n' "$release"
 REMOTE

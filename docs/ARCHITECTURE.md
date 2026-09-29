@@ -19,13 +19,13 @@ flowchart LR
 
 | Piece | Owns | Main source |
 | --- | --- | --- |
-| Quest app | Capture consent, H.264 and Opus encoding, RTP packetisation, reconnection and local quality control | [`quest/app`](quest/app/) |
-| Rust service | Authentication, rooms, signalling, live feed registry and diagnostics | [`backend/src`](backend/src/) |
-| mediasoup worker | Producers, consumers and WebRTC transports; it forwards encoded tracks without decoding or mixing them | [`backend/src/relay.rs`](backend/src/relay.rs) |
-| Browser app | Public viewing, admin controls, per-feed subscriptions and playback stats | [`frontend/src`](frontend/src/) |
-| Caddy and Compose | HTTPS, static web files, API/WebSocket proxy and persistent volumes | [`deploy/Caddyfile`](deploy/Caddyfile), [`compose.yaml`](compose.yaml) |
+| Quest app | Capture consent, H.264 and Opus encoding, RTP packetisation, reconnection and local quality control | [`quest/app`](../quest/app/) |
+| Rust service | Authentication, rooms, signalling, live feed registry and diagnostics | [`backend/src`](../backend/src/) |
+| mediasoup worker | Producers, consumers and WebRTC transports; it forwards encoded tracks without decoding or mixing them | [`backend/src/relay.rs`](../backend/src/relay.rs) |
+| Browser app | Public viewing, admin controls, per-feed subscriptions and playback stats | [`frontend/src`](../frontend/src/) |
+| Caddy and Compose | HTTPS, static web files, API/WebSocket proxy and persistent volumes | [`tools/config/Caddyfile`](../tools/config/Caddyfile), [`tools/config/compose.yaml`](../tools/config/compose.yaml) |
 
-The archived ADB/scrcpy prototype in [`quest/prototype-server`](quest/prototype-server/) does not forward media for this path
+The archived ADB/scrcpy prototype in [`quest/prototype-server`](../quest/prototype-server/) does not forward media for this path
 
 ## A viewer joining a room
 
@@ -77,4 +77,4 @@ The admin's control RTT, packet counts, bitrate, queue and recent uptime samples
 
 </details>
 
-For commands and deployment ports, see the [README](README.md#deploy)
+For commands and deployment ports, see the [README](../README.md#deploy)

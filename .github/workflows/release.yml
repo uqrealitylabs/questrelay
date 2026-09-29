@@ -18,7 +18,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
-      - run: scripts/distribute.sh "$GITHUB_REF_NAME"
+      - run: tools/scripts/distribute.sh "$GITHUB_REF_NAME"
       - run: |
           gh release create "$GITHUB_REF_NAME" \
             "dist/questrelay-server-$GITHUB_REF_NAME.tar.gz" \

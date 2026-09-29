@@ -26,7 +26,7 @@ jobs:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           BEFORE: ${{ github.event.before }}
-        run: scripts/changes.sh >> "$GITHUB_OUTPUT"
+        run: tools/scripts/changes.sh >> "$GITHUB_OUTPUT"
 
   web:
     needs: detect
@@ -56,10 +56,10 @@ jobs:
       - run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
-          shellcheck scripts/*.sh
-          bash scripts/changes.test.sh
-          cp .env.example .env
-          docker compose config --quiet
+          shellcheck tools/scripts/*.sh
+          bash tools/scripts/changes.test.sh
+          cp tools/config/.env.example .env
+          docker compose -f tools/config/compose.yaml --project-directory . config --quiet
 
   backend:
     needs: detect
