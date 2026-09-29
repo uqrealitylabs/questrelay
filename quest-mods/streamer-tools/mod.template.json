@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Lauriethefish/QuestPatcher.QMod/main/QuestPatcher.QMod/Resources/qmod.schema.json",
+  "_QPVersion": "0.1.1",
+  "name": "${mod_name}",
+  "id": "${mod_id}",
+  "author": "vr-livestream (port of EnderdracheLP Streamer Tools)",
+  "version": "0.1.2",
+  "packageId": "com.beatgames.beatsaber",
+  "packageVersion": "1.40.8_7379",
+  "description": "HTTP live score/combo/misses on port 53502 (1.40.8 verify port)",
+  "dependencies": [],
+  "modFiles": [],
+  "lateModFiles": ["${binary}"],
+  "libraryFiles": ["libc++_shared.so"],
+  "fileCopies": []
+}

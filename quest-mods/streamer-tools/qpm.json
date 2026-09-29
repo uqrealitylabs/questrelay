@@ -1,0 +1,56 @@
+{
+  "$schema": "https://raw.githubusercontent.com/QuestPackageManager/QPM.Package/refs/heads/main/qpm.schema.json",
+  "version": "0.1.0",
+  "sharedDir": "shared",
+  "dependenciesDir": "extern",
+  "info": {
+    "name": "Streamer Tools",
+    "id": "Streamer-Tools",
+    "version": "0.1.2",
+    "url": null,
+    "additionalData": {
+      "overrideSoName": "libStreamer-Tools.so",
+      "cmake": true
+    }
+  },
+  "workspace": {
+    "scripts": {
+      "build": ["pwsh ./scripts/build.ps1"],
+      "clean": ["pwsh ./scripts/build.ps1 -clean"],
+      "copy": ["pwsh ./scripts/copy.ps1 $0:?"],
+      "logcat": ["pwsh ./scripts/start-logging.ps1"],
+      "qmod": ["pwsh ./scripts/build.ps1", "pwsh ./scripts/createqmod.ps1"],
+      "restart": ["pwsh ./scripts/restart-game.ps1"],
+      "stack": ["pwsh ./scripts/ndk-stack.ps1"],
+      "tomb": ["pwsh ./scripts/pull-tombstone.ps1"]
+    },
+    "ndk": "^27.3.13750724",
+    "qmodIncludeDirs": ["./build", "./extern/libs"],
+    "qmodIncludeFiles": [],
+    "qmodOutput": "./Streamer-Tools.qmod"
+  },
+  "dependencies": [
+    {
+      "id": "beatsaber-hook",
+      "versionRange": "^6.4.2",
+      "additionalData": {}
+    },
+    {
+      "id": "scotland2",
+      "versionRange": "^0.1.6",
+      "additionalData": {
+        "includeQmod": false
+      }
+    },
+    {
+      "id": "bs-cordl",
+      "versionRange": "^4008.0.0",
+      "additionalData": {}
+    },
+    {
+      "id": "paper2_scotland2",
+      "versionRange": "^4.8.0",
+      "additionalData": {}
+    }
+  ]
+}

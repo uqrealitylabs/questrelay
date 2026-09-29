@@ -6,3 +6,12 @@ quest-mod/vendor/scrcpy-server
 .DS_Store
 *.tsbuildinfo
 backend/target/
+.cursor
+plans/
+quest-mods/_upstream-streamer-tools/
+quest-mods/streamer-tools/extern/
+quest-mods/streamer-tools/build/
+quest-mods/streamer-tools/*.qmod
+quest-mods/streamer-tools/compile_commands.json
+quest-mods/streamer-tools/qpm.shared.json
+quest-mods/_templatr_*
