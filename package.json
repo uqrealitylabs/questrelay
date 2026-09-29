@@ -1,18 +1,26 @@
 {
-  "name": "vr-livestream",
+  "name": "questrelay",
   "private": true,
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "frontend",
+    "frontend/shared",
+    "quest-mod/prototype-server"
   ],
   "scripts": {
-    "dev:server": "npm run dev -w @vr-livestream/server",
-    "dev:web": "npm run dev -w @vr-livestream/web",
-    "build": "npm run build -w @vr-livestream/shared && npm run build -w @vr-livestream/web && npm run build -w @vr-livestream/server",
-    "test": "npm run build -w @vr-livestream/shared && npm run test -w @vr-livestream/shared && npm run test -w @vr-livestream/server && npm run test -w @vr-livestream/web",
-    "download:scrcpy": "node scripts/download-scrcpy-server.mjs"
+    "dev:server": "cargo run --manifest-path backend/Cargo.toml",
+    "dev:prototype": "npm run dev -w @questrelay/prototype",
+    "dev:web": "npm run dev -w @questrelay/web",
+    "build": "npm run build -w @questrelay/shared && npm run build -w @questrelay/web && cargo build --manifest-path backend/Cargo.toml",
+    "test": "npm run build -w @questrelay/shared && npm run test -w @questrelay/shared && npm run test -w @questrelay/prototype && npm run test -w @questrelay/web && cargo test --manifest-path backend/Cargo.toml",
+    "download:scrcpy": "node quest-mod/scripts/download-scrcpy-server.mjs",
+    "check": "biome check . && cargo fmt --manifest-path backend/Cargo.toml -- --check && cargo clippy --manifest-path backend/Cargo.toml -- -D warnings",
+    "lint": "biome lint . && cargo clippy --manifest-path backend/Cargo.toml -- -D warnings",
+    "format": "biome format --write . && cargo fmt --manifest-path backend/Cargo.toml"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14"
   }
 }

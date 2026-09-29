@@ -1,9 +1,8 @@
 node_modules/
 dist/
-data/devices.json
-vendor/scrcpy-server
+quest-mod/prototype-server/data/devices.json
+quest-mod/vendor/scrcpy-server
 *.log
 .DS_Store
-apps/web/dist/
-apps/server/dist/
-packages/shared/dist/
+*.tsbuildinfo
+backend/target/
