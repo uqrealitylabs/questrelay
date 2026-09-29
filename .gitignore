@@ -1,22 +1,31 @@
+# Dependencies and generated builds
 node_modules/
 dist/
-quest-mod/prototype-server/data/devices.json
-quest-mod/vendor/scrcpy-server
+build/
+target/
+.gradle/
+*.tsbuildinfo
+*.qmod
+compile_commands.json
+qpm.shared.json
+
+# Local state and secrets
+data/
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.key
 *.log
 .DS_Store
-*.tsbuildinfo
-backend/target/
-.env
-data/
-quest-mod/app/.gradle/
-quest-mod/app/app/build/
-quest-mod/app/build/
 .cursor
 plans/
-quest-mods/_upstream-streamer-tools/
-quest-mods/streamer-tools/extern/
-quest-mods/streamer-tools/build/
-quest-mods/streamer-tools/*.qmod
-quest-mods/streamer-tools/compile_commands.json
-quest-mods/streamer-tools/qpm.shared.json
-quest-mods/_templatr_*
+
+# Downloaded Quest tooling
+quest/vendor/scrcpy-server
+quest/**/extern/
+quest/_upstream-*/
+quest/_templatr_*

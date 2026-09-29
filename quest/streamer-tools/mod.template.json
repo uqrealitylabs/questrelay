@@ -3,7 +3,7 @@
   "_QPVersion": "0.1.1",
   "name": "${mod_name}",
   "id": "${mod_id}",
-  "author": "vr-livestream (port of EnderdracheLP Streamer Tools)",
+  "author": "QuestRelay (port of EnderdracheLP Streamer Tools)",
   "version": "0.1.2",
   "packageId": "com.beatgames.beatsaber",
   "packageVersion": "1.40.8_7379",

@@ -6,8 +6,8 @@ node_modules
 backend/target
 frontend/dist
 frontend/work
-quest-mod/app
-quest-mod/vendor
-quest-mod/prototype-server/data
-quest-mod/prototype-server/dist
+quest/app
+quest/vendor
+quest/prototype-server/data
+quest/prototype-server/dist
 *.log

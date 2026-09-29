@@ -28,9 +28,9 @@ The README defines provisional latency budgets and measurement conditions; no pe
 
 ## Archived prototype
 
-The optional prototype in `quest-mod/prototype-server` still uses ADB/scrcpy, requires Developer Mode, carries video only and limits active streams to two
+The optional prototype in `quest/prototype-server` still uses ADB/scrcpy, requires Developer Mode, carries video only and limits active streams to two
 
-- **Registry / favourites** — persisted entries in `quest-mod/prototype-server/data/devices.json`
+- **Registry / favourites** — persisted entries in `quest/prototype-server/data/devices.json`
 - **Discovery / scan** — saved devices, subnet ADB probes and `adb devices`
 - **Pair** — `adb pair` wireless-debugging bootstrap
 - **Enable wireless ADB** — USB `adb tcpip 5555` helper

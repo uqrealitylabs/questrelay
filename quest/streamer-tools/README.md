@@ -11,7 +11,7 @@ Target: Beat Saber **1.40.8_7379**, Scotland2, NDK 27.
 Toolchain once: PowerShell 7, CMake, QPM, `qpm download ninja`, `qpm ndk download 27`, set `ANDROID_NDK_HOME`.
 
 ```powershell
-cd quest-mods/streamer-tools
+cd quest/streamer-tools
 qpm restore
 qpm s build
 qpm s qmod   # or: pwsh ./scripts/createqmod.ps1

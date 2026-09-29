@@ -1,0 +1,28 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    uses: ./.github/workflows/check.yml
+
+  publish:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - run: scripts/distribute.sh "$GITHUB_REF_NAME"
+      - run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/questrelay-server-$GITHUB_REF_NAME.tar.gz" \
+            "dist/questrelay-server-$GITHUB_REF_NAME.tar.gz.sha256" \
+            --verify-tag --generate-notes --title "QuestRelay $GITHUB_REF_NAME"
+        env:
+          GH_TOKEN: ${{ github.token }}

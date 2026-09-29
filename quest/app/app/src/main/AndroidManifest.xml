@@ -1,0 +1,29 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <application
+        android:label="QuestRelay"
+        android:icon="@drawable/capybara"
+        android:allowBackup="false"
+        android:theme="@android:style/Theme.Material.NoActionBar"
+        android:usesCleartextTraffic="${cleartextEnabled}">
+        <meta-data
+            android:name="com.oculus.supportedDevices"
+            android:value="quest2|questpro|quest3|quest3s" />
+        <activity android:name=".MainActivity" android:exported="true">
+            <layout android:defaultWidth="740dp" android:defaultHeight="500dp" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <service
+            android:name=".CaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+    </application>
+</manifest>

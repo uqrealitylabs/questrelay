@@ -92,7 +92,7 @@ export function Settings({ theme, personal, setPersonal, room, rooms = [], onSav
     <button type="button" className="gear-button" aria-label="Settings" aria-haspopup="dialog" onClick={open} title="Settings">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m10.4 2.8-.4 1.6a8 8 0 0 0-1.7.7L6.9 4.2 4.2 6.9l.9 1.4a8 8 0 0 0-.7 1.7l-1.6.4v3.2l1.6.4c.2.6.4 1.2.7 1.7l-.9 1.4 2.7 2.7 1.4-.9c.5.3 1.1.5 1.7.7l.4 1.6h3.2l.4-1.6c.6-.2 1.2-.4 1.7-.7l1.4.9 2.7-2.7-.9-1.4c.3-.5.5-1.1.7-1.7l1.6-.4v-3.2l-1.6-.4a8 8 0 0 0-.7-1.7l.9-1.4-2.7-2.7-1.4.9a8 8 0 0 0-1.7-.7l-.4-1.6h-3.2Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><circle cx="12" cy="12" r="3.1" stroke="currentColor" strokeWidth="1.7"/></svg>
     </button>
-    <dialog ref={dialog} className="settings-dialog" aria-label="Settings" onClick={(event) => { if (event.target === dialog.current) close(); }}>
+    <dialog ref={dialog} className="settings-dialog" aria-label="Settings" onClick={(event) => { if (event.target === dialog.current) close(); }} onKeyDown={(event) => { if (event.key === "Escape") close(); }}>
       <div className="settings-head"><div><h2>Settings</h2><p>Make this room feel like yours</p></div>
         <button type="button" className="settings-close" aria-label="Close settings" onClick={close}>×</button></div>
       {onSaved && <div className="settings-tabs" role="tablist" aria-label="Settings section">

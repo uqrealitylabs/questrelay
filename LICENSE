@@ -1,0 +1,16 @@
+QuestRelay Modified MIT Licence
+Copyright (c) 2026 UQ Reality Labs
+
+This is a custom source-available licence. It is not the standard MIT Licence or an open-source licence because it restricts commercial use and AI training
+
+1. Covered material. This licence covers original QuestRelay code, documentation, artwork and other project material owned by UQ Reality Labs (UQRL). It does not replace the separate licences of third-party material, including the licence in quest/streamer-tools/LICENSE. UQRL retains ownership of its original material and the QuestRelay name and branding
+
+2. Non-commercial permission. UQRL grants you permission, free of charge, to use, copy, modify, merge, publish and distribute the covered material for non-commercial purposes, subject to this licence. Every copy must include this licence and the UQRL copyright notice. A distributed modification or derivative must clearly acknowledge UQRL as the source of the original material in its accompanying documentation or credits. This permission does not transfer ownership of the original material or grant a trademark licence
+
+3. Commercial use. This licence grants no permission to use the covered material in a commercial product or service, or to sell or monetise the covered material or a derivative. Contact UQRL and obtain separate written permission before doing so. Any commercial permission must set terms for a product that is reasonably easy for its intended users to use and respects their privacy and data, including clear notice, proportionate data collection and appropriate security
+
+4. AI training. This licence grants no permission to use the covered material to train, fine-tune or develop an AI model or to include it in a training dataset. Such use requires a separate written agreement with UQRL, including agreed compensation. Unauthorised use may be subject to remedies available under applicable law
+
+5. Termination. The permission in section 2 ends if you breach this licence and do not remedy the breach within 30 days after receiving written notice from UQRL. This does not affect rights or remedies arising from an earlier breach
+
+THE COVERED MATERIAL IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. TO THE EXTENT PERMITTED BY LAW, UQRL AND ITS CONTRIBUTORS ARE NOT LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE COVERED MATERIAL OR ITS USE
