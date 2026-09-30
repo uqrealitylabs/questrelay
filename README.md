@@ -70,4 +70,4 @@ One Quest has sent 1280 × 720 video at 30 fps and an Opus audio track through t
 
 QuestRelay is maintained by UQ Reality Labs. Before contributing, read the [contribution guide](docs/CONTRIBUTING.md), [Code of Conduct](docs/CODE_OF_CONDUCT.md) and [security policy](docs/SECURITY.md). The project uses a [custom modified MIT-style licence](LICENSE), not standard MIT; commercial use and AI training require separate permission
 
-The [release history](docs/CHANGELOG.md) follows each development milestone and explains which versions are retrospective source snapshots
+The [release history](docs/CHANGELOG.md) and [GitHub releases](https://github.com/uqrealitylabs/questrelay/releases) show what changed in each version and which builds you can download
