@@ -1,5 +1,7 @@
 FROM rust:1-bookworm AS build
 
+RUN rustup component add rustfmt
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential ca-certificates clang cmake curl ninja-build \
     pkg-config python3 python3-pip python3-venv && \

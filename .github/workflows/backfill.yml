@@ -13,6 +13,7 @@ on:
           - v0.6.0
           - v0.7.0
           - v0.8.0
+          - v0.8.1
 
 permissions:
   contents: read
@@ -33,12 +34,24 @@ jobs:
           ref: ${{ inputs.tag }}
       - id: revision
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Add rustfmt required by mediasoup code generation
+        if: matrix.name == 'backend'
+        run: sed -i '/^FROM rust:1-bookworm AS build$/a RUN rustup component add rustfmt' backend/Dockerfile
       - name: Restore the old prototype manifest for Docker builds
         if: matrix.name == 'frontend' && (inputs.tag == 'v0.4.0' || inputs.tag == 'v0.5.0')
         run: |
           mkdir -p quest-mod/prototype-server
           jq '.packages["quest-mod/prototype-server"] | . + {private: true, type: "module"}' \
             package-lock.json > quest-mod/prototype-server/package.json
+      - name: Supply the TypeScript config omitted by the tagged Dockerfile
+        if: matrix.name == 'frontend'
+        run: |
+          if [[ -f tsconfig.base.json ]]; then
+            config=tsconfig.base.json
+          else
+            config=tools/config/tsconfig.base.json
+          fi
+          sed -i "/^COPY frontend frontend$/a COPY $config $config" frontend/Dockerfile
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
@@ -85,23 +98,23 @@ jobs:
           docker cp "$container:/usr/local/bin/questrelay" "dist/questrelay-linux-x86_64-$TAG"
           chmod +x "dist/questrelay-linux-x86_64-$TAG"
           (cd dist && sha256sum "questrelay-linux-x86_64-$TAG" > "questrelay-linux-x86_64-$TAG.sha256")
-          gh release upload "$TAG" "dist/questrelay-linux-x86_64-$TAG" "dist/questrelay-linux-x86_64-$TAG.sha256"
+          gh release upload "$TAG" "dist/questrelay-linux-x86_64-$TAG" "dist/questrelay-linux-x86_64-$TAG.sha256" --clobber
       - uses: actions/setup-java@v6
-        if: inputs.tag == 'v0.6.0' || inputs.tag == 'v0.7.0' || inputs.tag == 'v0.8.0'
+        if: inputs.tag == 'v0.6.0' || inputs.tag == 'v0.7.0' || inputs.tag == 'v0.8.0' || inputs.tag == 'v0.8.1'
         with:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v4
-        if: inputs.tag == 'v0.6.0' || inputs.tag == 'v0.7.0' || inputs.tag == 'v0.8.0'
+        if: inputs.tag == 'v0.6.0' || inputs.tag == 'v0.7.0' || inputs.tag == 'v0.8.0' || inputs.tag == 'v0.8.1'
       - run: sdkmanager 'platforms;android-35' 'build-tools;36.0.0'
-        if: inputs.tag == 'v0.6.0' || inputs.tag == 'v0.7.0' || inputs.tag == 'v0.8.0'
+        if: inputs.tag == 'v0.6.0' || inputs.tag == 'v0.7.0' || inputs.tag == 'v0.8.0' || inputs.tag == 'v0.8.1'
       - uses: gradle/actions/setup-gradle@v6
-        if: inputs.tag == 'v0.6.0' || inputs.tag == 'v0.7.0' || inputs.tag == 'v0.8.0'
+        if: inputs.tag == 'v0.6.0' || inputs.tag == 'v0.7.0' || inputs.tag == 'v0.8.0' || inputs.tag == 'v0.8.1'
         with:
           gradle-version: '9.6.0'
           cache-provider: basic
       - name: Attach the Quest ADB test build
-        if: inputs.tag == 'v0.6.0' || inputs.tag == 'v0.7.0' || inputs.tag == 'v0.8.0'
+        if: inputs.tag == 'v0.6.0' || inputs.tag == 'v0.7.0' || inputs.tag == 'v0.8.0' || inputs.tag == 'v0.8.1'
         env:
           TAG: ${{ inputs.tag }}
           GH_TOKEN: ${{ github.token }}
@@ -109,4 +122,4 @@ jobs:
           gradle -p quest/app :app:testDebugUnitTest :app:assembleDebug --no-daemon
           cp quest/app/app/build/outputs/apk/debug/app-debug.apk "dist/questrelay-quest-debug-$TAG.apk"
           (cd dist && sha256sum "questrelay-quest-debug-$TAG.apk" > "questrelay-quest-debug-$TAG.apk.sha256")
-          gh release upload "$TAG" "dist/questrelay-quest-debug-$TAG.apk" "dist/questrelay-quest-debug-$TAG.apk.sha256"
+          gh release upload "$TAG" "dist/questrelay-quest-debug-$TAG.apk" "dist/questrelay-quest-debug-$TAG.apk.sha256" --clobber
