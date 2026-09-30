@@ -50,14 +50,35 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: questrelay-quest-debug
+          path: dist
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - run: tools/scripts/distribute.sh "$GITHUB_REF_NAME"
+      - run: |
+          mv dist/app-debug.apk "dist/questrelay-quest-debug-$GITHUB_REF_NAME.apk"
+          docker pull "ghcr.io/${GITHUB_REPOSITORY,,}-backend:$GITHUB_REF_NAME"
+          container=$(docker create "ghcr.io/${GITHUB_REPOSITORY,,}-backend:$GITHUB_REF_NAME")
+          trap 'docker rm "$container" >/dev/null' EXIT
+          docker cp "$container:/usr/local/bin/questrelay" "dist/questrelay-linux-x86_64-$GITHUB_REF_NAME"
+          chmod +x "dist/questrelay-linux-x86_64-$GITHUB_REF_NAME"
+          (cd dist && sha256sum "questrelay-quest-debug-$GITHUB_REF_NAME.apk" "questrelay-linux-x86_64-$GITHUB_REF_NAME" > "questrelay-binaries-$GITHUB_REF_NAME.sha256")
       - run: |
           gh release create "$GITHUB_REF_NAME" \
             "dist/questrelay-server-$GITHUB_REF_NAME.tar.gz" \
             "dist/questrelay-server-$GITHUB_REF_NAME.tar.gz.sha256" \
-            --verify-tag --generate-notes --prerelease \
+            "dist/questrelay-quest-debug-$GITHUB_REF_NAME.apk" \
+            "dist/questrelay-linux-x86_64-$GITHUB_REF_NAME" \
+            "dist/questrelay-binaries-$GITHUB_REF_NAME.sha256" \
+            --verify-tag --notes-file "docs/releases/$GITHUB_REF_NAME.md" --latest \
             --title "QuestRelay $GITHUB_REF_NAME"
         env:
           GH_TOKEN: ${{ github.token }}

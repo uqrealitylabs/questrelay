@@ -9,7 +9,9 @@ fi
 
 web=false backend=false quest=false deploy=false npm_audit=false rust_audit=false
 
-if [[ $mode == --all || ${GITHUB_REF:-} == refs/tags/* || ${GITHUB_EVENT_NAME:-} == schedule || ${GITHUB_EVENT_NAME:-} == workflow_dispatch ]]; then
+if [[ $mode == --paths ]]; then
+  exec 3<&0
+elif [[ $mode == --all || ${GITHUB_REF:-} == refs/tags/* || ${GITHUB_EVENT_NAME:-} == schedule || ${GITHUB_EVENT_NAME:-} == workflow_dispatch ]]; then
   web=true backend=true quest=true deploy=true npm_audit=true rust_audit=true
 elif [[ $mode == event ]]; then
   if [[ -n ${PR_BASE:-} && -n ${PR_HEAD:-} ]]; then
@@ -30,8 +32,6 @@ elif [[ $mode == event ]]; then
       web=true backend=true quest=true deploy=true npm_audit=true rust_audit=true
     fi
   fi
-else
-  exec 3<&0
 fi
 
 if [[ $web == false && $backend == false && $quest == false && $deploy == false && $npm_audit == false && $rust_audit == false ]]; then
@@ -55,7 +55,7 @@ if [[ $web == false && $backend == false && $quest == false && $deploy == false 
         web=true ;;
       quest/app/*)
         quest=true ;;
-      .dockerignore|.gitignore|tools/config/.env.example|tools/config/compose.yaml|tools/config/Caddyfile|tools/scripts/*|.github/workflows/release.yml)
+      .dockerignore|.gitignore|tools/config/.env.example|tools/config/compose.yaml|tools/config/Caddyfile|tools/scripts/*|.github/workflows/release.yml|.github/workflows/backfill.yml)
         deploy=true ;;
     esac
   done
