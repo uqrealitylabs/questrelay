@@ -55,7 +55,7 @@ if [[ $web == false && $backend == false && $quest == false && $deploy == false 
         web=true ;;
       quest/app/*)
         quest=true ;;
-      .dockerignore|.gitignore|tools/config/.env.example|tools/config/compose.yaml|tools/config/Caddyfile|tools/scripts/*|.github/workflows/release.yml|.github/workflows/backfill.yml)
+      .dockerignore|.gitignore|tools/config/.env.example|tools/config/compose.yaml|tools/config/Caddyfile|tools/scripts/*|.github/workflows/release.yml)
         deploy=true ;;
     esac
   done

@@ -36,7 +36,7 @@ curl https://your-domain.example/health
 
 Use your VM's SSH user and public address instead of `ubuntu@PUBLIC_IP`. On later deployments, omit the `.env` argument to keep the server's existing keys. The script verifies the archive checksum when present, builds on the VM, waits for relay health and retains earlier release directories. It keeps the Compose project name fixed so room data and Caddy certificates stay in their named volumes
 
-From v0.4.0 onward, release tags have `ghcr.io/uqrealitylabs/questrelay-backend:<tag>` and `ghcr.io/uqrealitylabs/questrelay-frontend:<tag>` images. They contain each tag's application code. The historical build job supplies tools and config files omitted by the older Dockerfiles. Pulling them from this private repository requires GitHub Container Registry access
+From v0.4.0 onward, release tags have `ghcr.io/uqrealitylabs/questrelay-backend:<tag>` and `ghcr.io/uqrealitylabs/questrelay-frontend:<tag>` images. They contain each tag's application code. The older tags were built with tools and config files their Dockerfiles omitted. Pulling them from this private repository requires GitHub Container Registry access
 
 Open `https://your-domain.example/admin` and sign in with the admin key. Make the room public by link or set a private access code, then give each Quest the publisher key and `wss://your-domain.example/ws/relay`. The wearer starts sharing and approves the capture prompts
 

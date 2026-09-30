@@ -12,6 +12,7 @@ These releases follow QuestRelay as the web room, Rust relay and Quest app came 
 | [v0.6.0](releases/v0.6.0.md) | `cc23de4` | Added the Quest capture app, release tooling and deployment groundwork |
 | [v0.7.0](releases/v0.7.0.md) | `2d8edad` | Made CI selective and organised deployment scripts and documentation |
 | [v0.8.0](releases/v0.8.0.md) | Release prep | Synced component versions and added GHCR image publishing. A tag-only CI bug blocked the original image run |
-| [v0.8.1](releases/v0.8.1.md) | Current release | Fixed tag-only CI path selection and backfilled the missing images and downloads |
+| [v0.8.1](releases/v0.8.1.md) | Backfilled release | Fixed tag-only CI path selection and backfilled the missing images and downloads |
+| [v0.8.2](releases/v0.8.2.md) | Current release | Put the Docker build repairs into the tagged source so normal release publishing works |
 
 All versions remain pre-1.0. The [current status](../README.md#current-status) describes what has been tested on a real Quest and what still needs field validation
