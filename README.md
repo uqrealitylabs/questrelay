@@ -69,3 +69,5 @@ QuestRelay needs a Linux host with a public address, HTTPS and a direct WebRTC m
 One Quest has sent 1280 × 720 video at 30 fps and an Opus audio track through the Rust relay to a local browser. Audible game audio, sync, several headsets at once, internet NAT traversal, normal release-channel installation and glass-to-glass latency still need live testing. The latency numbers in the architecture notes are targets, not measured results; “zero latency” is not a promise
 
 QuestRelay is maintained by UQ Reality Labs. Before contributing, read the [contribution guide](docs/CONTRIBUTING.md), [Code of Conduct](docs/CODE_OF_CONDUCT.md) and [security policy](docs/SECURITY.md). The project uses a [custom modified MIT-style licence](LICENSE), not standard MIT; commercial use and AI training require separate permission
+
+The [release history](docs/CHANGELOG.md) follows each development milestone and explains which versions are retrospective source snapshots

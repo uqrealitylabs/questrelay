@@ -7,7 +7,7 @@ QuestRelay runs as one self-hosted Rust relay and one web server. The web server
 
 ## Prepare a host
 
-Use a Linux VM with a public IP and a domain you control, preferably near the people who will watch. An [OCI Always Free A1 VM](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm) is one possible starting point, subject to capacity and free-tier limits. [Install Docker Engine and the Compose plugin](https://docs.docker.com/engine/install/ubuntu/) on the VM
+Use a Linux VM with a public IP and a domain you control, preferably near the people who will watch. For Docker deployment, [install Docker Engine and the Compose plugin](https://docs.docker.com/engine/install/ubuntu/) on the VM
 
 Point the domain's DNS record at the VM. In both your cloud network rules and the VM firewall, allow TCP 80 and 443, plus UDP and TCP 44444. Restrict SSH to your own IP. Caddy obtains its TLS certificate after the domain resolves and port 80 is reachable
 
@@ -35,6 +35,8 @@ curl https://your-domain.example/health
 ```
 
 Use your VM's SSH user and public address instead of `ubuntu@PUBLIC_IP`. On later deployments, omit the `.env` argument to keep the server's existing keys. The script verifies the archive checksum when present, builds on the VM, waits for relay health and retains earlier release directories. It keeps the Compose project name fixed so room data and Caddy certificates stay in their named volumes
+
+Tagged releases also publish `ghcr.io/uqrealitylabs/questrelay-backend:<tag>` and `ghcr.io/uqrealitylabs/questrelay-frontend:<tag>`. The images are built by GitHub Actions after the code checks pass. Pulling them from a private repository requires GitHub Container Registry access
 
 Open `https://your-domain.example/admin` and sign in with the admin key. Make the room public by link or set a private access code, then give each Quest the publisher key and `wss://your-domain.example/ws/relay`. The wearer starts sharing and approves the capture prompts
 
