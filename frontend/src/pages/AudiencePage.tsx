@@ -366,6 +366,7 @@ export function AudiencePage() {
                     label={feed.headsetId}
                     stream={stream}
                     viewer={viewer}
+                    beatSaber={feed.beatSaber}
                     focused={focused === feed.headsetId}
                     pinned={pinned.includes(feed.headsetId)}
                     muted={!audible.includes(feed.headsetId)}

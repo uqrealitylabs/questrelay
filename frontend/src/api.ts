@@ -38,10 +38,19 @@ export type AuthState = {
   accounts?: AdminAccount[];
 };
 
+export type BeatSaberStats = {
+  score: number;
+  goodCuts: number;
+  badCuts: number;
+  missedNotes: number;
+  combo: number;
+};
+
 export type Feed = {
   headsetId: string;
   video: string | null;
   audio: string | null;
+  beatSaber?: BeatSaberStats | null;
 };
 
 export type TrackStats = { packets: number; bytes: number; bitrate: number };

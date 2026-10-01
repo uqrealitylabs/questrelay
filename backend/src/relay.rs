@@ -68,6 +68,13 @@ pub enum Action {
         height: u32,
         fps: u32,
     },
+    GameStats {
+        score: u32,
+        good_cuts: u32,
+        bad_cuts: u32,
+        missed_notes: u32,
+        combo: u32,
+    },
     Consume {
         transport_id: TransportId,
         producer_id: ProducerId,
@@ -105,6 +112,7 @@ struct Headset {
     audio_enabled: bool,
     capture: Option<Value>,
     history: VecDeque<Value>,
+    beat_saber: Option<Value>,
 }
 
 impl Default for Headset {
@@ -120,6 +128,7 @@ impl Default for Headset {
             audio_enabled: true,
             capture: None,
             history: VecDeque::with_capacity(60),
+            beat_saber: None,
         }
     }
 }
@@ -139,6 +148,8 @@ pub struct Feed {
     headset_id: String,
     video: Option<ProducerId>,
     audio: Option<ProducerId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    beat_saber: Option<Value>,
 }
 
 #[derive(Default)]
@@ -247,6 +258,7 @@ impl Relay {
                 headset_id: headset_id.clone(),
                 video: headset.video,
                 audio: headset.audio,
+                beat_saber: headset.beat_saber.clone(),
             })
             .collect();
         feeds.sort_unstable_by(|a, b| a.headset_id.cmp(&b.headset_id));
@@ -747,6 +759,36 @@ impl Peer {
                 }
                 Ok(json!({"ok": true}))
             }
+            Action::GameStats {
+                score,
+                good_cuts,
+                bad_cuts,
+                missed_notes,
+                combo,
+            } => {
+                ensure!(self.role == Role::Publisher, "Publish access required");
+                ensure!(
+                    score <= 100_000_000
+                        && good_cuts <= 1_000_000
+                        && bad_cuts <= 1_000_000
+                        && missed_notes <= 1_000_000
+                        && combo <= 1_000_000,
+                    "Invalid game stats"
+                );
+                if let Some(id) = &self.headset_id
+                    && let Some(headset) = self.relay.room.lock().headsets.get_mut(id)
+                {
+                    headset.beat_saber = Some(json!({
+                        "score": score,
+                        "goodCuts": good_cuts,
+                        "badCuts": bad_cuts,
+                        "missedNotes": missed_notes,
+                        "combo": combo,
+                    }));
+                }
+                self.relay.changed();
+                Ok(json!({"ok": true}))
+            }
             Action::Consume {
                 transport_id,
                 producer_id,
@@ -868,6 +910,25 @@ mod tests {
         assert!(matches!(close.action, Action::CloseTransport { .. }));
         let ingest: Request = serde_json::from_value(json!({"id": 9, "action": "startIngest"}))?;
         assert!(matches!(ingest.action, Action::StartIngest));
+        let game: Request = serde_json::from_value(json!({
+            "id": 10,
+            "action": "gameStats",
+            "score": 12345,
+            "goodCuts": 100,
+            "badCuts": 2,
+            "missedNotes": 3,
+            "combo": 50,
+        }))?;
+        assert!(matches!(
+            game.action,
+            Action::GameStats {
+                score: 12345,
+                good_cuts: 100,
+                bad_cuts: 2,
+                missed_notes: 3,
+                combo: 50,
+            }
+        ));
         Ok(())
     }
 
@@ -967,6 +1028,26 @@ mod tests {
             .unwrap();
         assert_eq!(headset["capture"]["queueBytes"], 8192);
         assert_eq!(headset["history"].as_array().unwrap().len(), 1);
+        publisher
+            .handle(Action::GameStats {
+                score: 42_000,
+                good_cuts: 120,
+                bad_cuts: 4,
+                missed_notes: 7,
+                combo: 33,
+            })
+            .await?;
+        let feed = relay
+            .feeds()
+            .into_iter()
+            .find(|feed| feed.headset_id == "quest-a")
+            .expect("quest-a feed");
+        let beat = feed.beat_saber.expect("beat saber stats");
+        assert_eq!(beat["score"], 42_000);
+        assert_eq!(beat["goodCuts"], 120);
+        assert_eq!(beat["badCuts"], 4);
+        assert_eq!(beat["missedNotes"], 7);
+        assert_eq!(beat["combo"], 33);
         assert!(relay.set_media("missing", true, true).is_err());
         packet[1] = 111;
         assert!(publisher.ingest_rtp(packet.clone()).is_err());

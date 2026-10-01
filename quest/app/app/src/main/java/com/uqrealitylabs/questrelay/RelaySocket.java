@@ -14,8 +14,12 @@ import org.json.JSONObject;
 
 final class RelaySocket implements AutoCloseable {
     private static final String TAG = "QuestRelay";
+    private static final String STREAMER_TOOLS_URL = "http://127.0.0.1:53502/data";
     private final OkHttpClient client = new OkHttpClient.Builder()
             .pingInterval(15, TimeUnit.SECONDS)
+            .build();
+    private final OkHttpClient gameStatsClient = new OkHttpClient.Builder()
+            .callTimeout(800, TimeUnit.MILLISECONDS)
             .build();
     private final String url;
     private final String key;
@@ -27,6 +31,8 @@ final class RelaySocket implements AutoCloseable {
     private volatile boolean ready;
     private volatile WebSocket socket;
     private Thread thread;
+    private Thread gameStatsThread;
+    private long nextGameStatsWarnAt;
 
     RelaySocket(String url, String key, String headsetId, CaptureService service,
             Runnable onReady, Runnable onFatal) {
@@ -42,6 +48,8 @@ final class RelaySocket implements AutoCloseable {
         running = true;
         thread = new Thread(this::connectLoop, "relay-connection");
         thread.start();
+        gameStatsThread = new Thread(this::gameStatsLoop, "game-stats");
+        gameStatsThread.start();
     }
 
     // ponytail: TCP can retain stale media on packet loss; move ingest to WebRTC/SRTP if WAN measurements miss the latency budget
@@ -213,6 +221,43 @@ final class RelaySocket implements AutoCloseable {
         }
     }
 
+    private void gameStatsLoop() {
+        while (running) {
+            WebSocket current = socket;
+            if (ready && current != null) {
+                try {
+                    Request request = new Request.Builder().url(STREAMER_TOOLS_URL).build();
+                    try (Response response = gameStatsClient.newCall(request).execute()) {
+                        if (response.isSuccessful() && response.body() != null) {
+                            JSONObject data = new JSONObject(response.body().string());
+                            current.send(new JSONObject()
+                                    .put("id", 5)
+                                    .put("action", "gameStats")
+                                    .put("score", data.optInt("score", 0))
+                                    .put("goodCuts", data.optInt("goodCuts", 0))
+                                    .put("badCuts", data.optInt("badCuts", 0))
+                                    .put("missedNotes", data.optInt("missedNotes", 0))
+                                    .put("combo", data.optInt("combo", 0))
+                                    .toString());
+                        }
+                    }
+                } catch (Exception error) {
+                    long now = android.os.SystemClock.elapsedRealtime();
+                    if (now >= nextGameStatsWarnAt) {
+                        nextGameStatsWarnAt = now + 15_000L;
+                        Log.d(TAG, "Streamer-tools unavailable", error);
+                    }
+                }
+            }
+            try {
+                Thread.sleep(1_000L);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+    }
+
     private void fail(WebSocket webSocket, Exception error) {
         ready = false;
         CaptureService.status = "Relay protocol error";
@@ -229,7 +274,10 @@ final class RelaySocket implements AutoCloseable {
         WebSocket current = socket;
         if (current != null) current.cancel();
         if (thread != null) thread.interrupt();
+        if (gameStatsThread != null) gameStatsThread.interrupt();
         client.dispatcher().executorService().shutdown();
         client.connectionPool().evictAll();
+        gameStatsClient.dispatcher().executorService().shutdown();
+        gameStatsClient.connectionPool().evictAll();
     }
 }

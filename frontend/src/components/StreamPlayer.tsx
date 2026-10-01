@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { BeatSaberStats } from "../api";
 import type { NerdStats, Viewer } from "../viewer";
 
 function rate(bits: number) {
@@ -7,11 +8,16 @@ function rate(bits: number) {
     : `${Math.round(bits / 1_000)} kb/s`;
 }
 
+function formatCount(value: number) {
+  return value.toLocaleString("en-US");
+}
+
 export function StreamPlayer({
   id,
   label,
   stream,
   viewer,
+  beatSaber,
   focused,
   pinned,
   muted,
@@ -24,6 +30,7 @@ export function StreamPlayer({
   label: string;
   stream: MediaStream;
   viewer: Viewer;
+  beatSaber?: BeatSaberStats | null;
   focused: boolean;
   pinned: boolean;
   muted: boolean;
@@ -36,6 +43,7 @@ export function StreamPlayer({
   const [needsGesture, setNeedsGesture] = useState(false);
   const [nerds, setNerds] = useState(false);
   const [stats, setStats] = useState<NerdStats | null>(null);
+  const [showBeatSaber, setShowBeatSaber] = useState(true);
 
   useEffect(() => {
     const element = video.current;
@@ -165,6 +173,30 @@ export function StreamPlayer({
           </section>
         )}
       </div>
+      {beatSaber && showBeatSaber && (
+        <div
+          className="feed-scoreboard"
+          aria-label={`${label} Beat Saber stats`}
+          data-testid={`scoreboard-${id}`}
+        >
+          <div>
+            <small>Hits</small>
+            <strong>{formatCount(beatSaber.goodCuts + beatSaber.badCuts)}</strong>
+          </div>
+          <div>
+            <small>Misses</small>
+            <strong>{formatCount(beatSaber.missedNotes)}</strong>
+          </div>
+          <div>
+            <small>Combo</small>
+            <strong>{formatCount(beatSaber.combo)}</strong>
+          </div>
+          <div className="feed-scoreboard-score">
+            <small>Score</small>
+            <strong>{formatCount(beatSaber.score)}</strong>
+          </div>
+        </div>
+      )}
       <div className="feed-footer">
         <div className="feed-person">
           <span className="avatar">{label.slice(0, 1).toUpperCase()}</span>
@@ -192,6 +224,16 @@ export function StreamPlayer({
           >
             Stats
           </button>
+          {beatSaber && (
+            <button
+              type="button"
+              aria-label={`${showBeatSaber ? "Hide" : "Show"} Beat Saber score for ${label}`}
+              aria-pressed={showBeatSaber}
+              onClick={() => setShowBeatSaber((value) => !value)}
+            >
+              Score
+            </button>
+          )}
           <button
             type="button"
             aria-label={focused ? `Return ${label} to grid` : `Focus ${label}`}
