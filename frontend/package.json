@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@questrelay/shared": "*",
-    "mediasoup-client": "^3.24.1",
+    "mediasoup-client": "^3.24.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router-dom": "^7.4.0"
@@ -25,6 +25,6 @@
     "jsdom": "^26.0.0",
     "typescript": "^7.0.2",
     "vite": "^6.2.2",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   }
 }
