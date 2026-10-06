@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 anyhow = "1"
 axum = { version = "0.8", features = ["ws"] }
-mediasoup = "0.28.1"
+mediasoup = "0.29.0"
 parking_lot = "0.12"
 rand = "0.10"
 serde = { version = "1", features = ["derive"] }
