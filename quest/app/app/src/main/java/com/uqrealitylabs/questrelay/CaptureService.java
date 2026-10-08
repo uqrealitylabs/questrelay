@@ -66,6 +66,8 @@ public final class CaptureService extends Service {
     static volatile int captureWidth = 1280;
     static volatile int captureHeight = 720;
     static volatile int captureFps = 30;
+    static volatile int encodedFps;
+    static volatile int uplinkLossPercent = -1;
     static volatile int targetBitrateBps = 4_000_000;
     static volatile int publisherLoad = 1;
     static volatile int viewerLoad;
@@ -93,6 +95,8 @@ public final class CaptureService extends Service {
         startedAtMs = SystemClock.elapsedRealtime();
         reconnects = 0;
         stats = new Stats(0, 0, 0, 0, 0, 0);
+        encodedFps = 0;
+        uplinkLossPercent = -1;
         videoEnabled = true;
         audioEnabled = true;
         publisherLoad = 1;
@@ -122,7 +126,7 @@ public final class CaptureService extends Service {
         Surface surface = null;
         MediaCodec audio = null;
         AudioRecord record = null;
-        RelaySocket relay = null;
+        MediaRelay relay = null;
         Thread videoThread = null;
         Thread audioThread = null;
         try {
@@ -142,11 +146,18 @@ public final class CaptureService extends Service {
             }, new Handler(Looper.getMainLooper()));
 
             Rtp rtp = new Rtp();
-            relay = new RelaySocket(intent.getStringExtra("url"), intent.getStringExtra("key"),
-                    intent.getStringExtra("headsetId"), this, this::requestKeyframe, () -> {
-                        active.set(false);
-                        stopSelf();
-                    });
+            String endpoint = intent.getStringExtra("url");
+            String publisherKey = intent.getStringExtra("key");
+            String headsetId = intent.getStringExtra("headsetId");
+            Runnable onFatal = () -> {
+                active.set(false);
+                stopSelf();
+            };
+            relay = endpoint != null && endpoint.startsWith("https://")
+                    ? new CloudflareRelay(endpoint, publisherKey, headsetId, this,
+                            this::requestKeyframe, onFatal)
+                    : new RelaySocket(endpoint, publisherKey, headsetId, this,
+                            this::requestKeyframe, onFatal);
             relay.start();
 
             video = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
@@ -156,10 +167,7 @@ public final class CaptureService extends Service {
             captureHeight = 0;
             captureFps = 0;
             int requestedFps = intent.getIntExtra("fps", 60) == 30 ? 30 : 60;
-            int[][] profiles = requestedFps == 60
-                    ? new int[][] {{1920, 1080, 60}, {1920, 1080, 30},
-                            {1280, 720, 60}, {1280, 720, 30}}
-                    : new int[][] {{1920, 1080, 30}, {1280, 720, 30}};
+            int[][] profiles = captureProfiles(intent.getIntExtra("height", 1080), requestedFps);
             for (int[] profile : profiles) {
                 if (capabilities.areSizeAndRateSupported(profile[0], profile[1], profile[2])) {
                     captureWidth = profile[0];
@@ -176,7 +184,7 @@ public final class CaptureService extends Service {
             autoQuality = intent.getBooleanExtra("autoQuality", true);
             requestedBitrateBps = intent.getIntExtra("bitrate", 8_000_000);
             targetBitrateBps = Math.min(encoderCeilingBps,
-                    autoQuality ? Math.min(8_000_000, encoderCeilingBps) : requestedBitrateBps);
+                    autoQuality ? 4_000_000 : requestedBitrateBps);
             MediaFormat videoFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC,
                     captureWidth, captureHeight);
             videoFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT,
@@ -235,7 +243,7 @@ public final class CaptureService extends Service {
             MediaCodec runningVideo = video;
             MediaCodec runningAudio = audio;
             AudioRecord runningRecord = record;
-            RelaySocket runningRelay = relay;
+            MediaRelay runningRelay = relay;
             videoThread = new Thread(() -> drainVideo(runningVideo, rtp, runningRelay),
                     "video-encoder");
             audioThread = new Thread(() -> drainAudio(runningRecord, runningAudio, rtp,
@@ -272,8 +280,10 @@ public final class CaptureService extends Service {
         }
     }
 
-    private void drainVideo(MediaCodec encoder, Rtp rtp, RelaySocket relay) {
+    private void drainVideo(MediaCodec encoder, Rtp rtp, MediaRelay relay) {
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+        long sampledAt = SystemClock.elapsedRealtime();
+        int sampledFrames = 0;
         try {
             while (active.get()) {
                 int index = encoder.dequeueOutputBuffer(info, 10_000);
@@ -293,10 +303,19 @@ public final class CaptureService extends Service {
                         } else {
                             List<byte[]> packets = rtp.video(data, info.presentationTimeUs,
                                     (info.flags & MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0);
-                            if (!packets.isEmpty() && !relay.sendVideo(packets)) requestKeyframe();
+                            if (!packets.isEmpty()) {
+                                sampledFrames++;
+                                if (!relay.sendVideo(packets)) requestKeyframe();
+                            }
                         }
                     }
                     encoder.releaseOutputBuffer(index, false);
+                }
+                long now = SystemClock.elapsedRealtime();
+                if (now - sampledAt >= 1_000) {
+                    encodedFps = (int) (sampledFrames * 1_000L / (now - sampledAt));
+                    sampledFrames = 0;
+                    sampledAt = now;
                 }
             }
         } catch (Exception error) {
@@ -304,7 +323,7 @@ public final class CaptureService extends Service {
         }
     }
 
-    private void drainAudio(AudioRecord record, MediaCodec encoder, Rtp rtp, RelaySocket relay) {
+    private void drainAudio(AudioRecord record, MediaCodec encoder, Rtp rtp, MediaRelay relay) {
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         byte[] pcm = new byte[AUDIO_BYTES];
         try {
@@ -372,16 +391,15 @@ public final class CaptureService extends Service {
                 : "Live: publishing paused by operator";
     }
 
-    void adjustBitrate(long queueBytes) {
+    void adjustBitrate(int lossPercent, long queueBytes) {
+        uplinkLossPercent = lossPercent;
         MediaCodec encoder = video;
         if (encoder == null || !autoQuality) return;
         long fanout = (long) publisherLoad * Math.max(1, viewerLoad);
-        int budget = (int) Math.max(1_000_000L, Math.min(encoderCeilingBps,
+        int ceiling = Math.min(encoderCeilingBps, captureHeight <= 720 ? 5_000_000 : 8_000_000);
+        int budget = (int) Math.max(1_000_000L, Math.min(ceiling,
                 egressBudgetBps / fanout));
-        int next = targetBitrateBps;
-        if (queueBytes > 128_000) next = Math.max(1_000_000, next * 2 / 3);
-        else if (queueBytes < 32_000) next = Math.min(budget, next + Math.max(250_000, next / 6));
-        next = Math.min(next, budget);
+        int next = nextBitrate(targetBitrateBps, budget, lossPercent, queueBytes);
         if (next == targetBitrateBps) return;
         try {
             Bundle parameters = new Bundle();
@@ -391,6 +409,25 @@ public final class CaptureService extends Service {
         } catch (IllegalStateException error) {
             Log.w(TAG, "Encoder rejected bitrate update", error);
         }
+    }
+
+    static int nextBitrate(int current, int budget, int lossPercent, long queueBytes) {
+        int next = current;
+        if (queueBytes > 128_000 || lossPercent >= 3)
+            next = Math.max(1_000_000, next * 2 / 3);
+        else if (lossPercent == 0 || (queueBytes >= 0 && queueBytes < 32_000))
+            next = Math.min(budget, next + 250_000);
+        return Math.min(next, budget);
+    }
+
+    static int[][] captureProfiles(int height, int fps) {
+        if (height == 720) return fps == 30
+                ? new int[][] {{1280, 720, 30}}
+                : new int[][] {{1280, 720, 60}, {1280, 720, 30}};
+        return fps == 30
+                ? new int[][] {{1920, 1080, 30}, {1280, 720, 30}}
+                : new int[][] {{1920, 1080, 60}, {1280, 720, 60},
+                        {1920, 1080, 30}, {1280, 720, 30}};
     }
 
     private void fail(String message, Exception error) {

@@ -66,6 +66,7 @@ public final class MainActivity extends Activity {
     private Button stopButton;
     private int bitrateMbps;
     private int fps;
+    private int resolutionHeight;
     private boolean autoQuality;
     private int activeTab;
     private final Runnable refresh = new Runnable() {
@@ -83,6 +84,7 @@ public final class MainActivity extends Activity {
         getWindow().setNavigationBarColor(RAIL);
         bitrateMbps = getPreferences(MODE_PRIVATE).getInt("bitrateMbps", 8);
         fps = getPreferences(MODE_PRIVATE).getInt("fps", 60);
+        resolutionHeight = getPreferences(MODE_PRIVATE).getInt("resolutionHeight", 1080);
         autoQuality = getPreferences(MODE_PRIVATE).getBoolean("autoQuality", true);
         buildInterface();
         showTab(0);
@@ -204,7 +206,7 @@ public final class MainActivity extends Activity {
         heading.setPadding(0, dp(8), 0, dp(16));
         panel.addView(heading);
         LinearLayout card = card();
-        url = field(card, "Relay URL", "wss://relay.example.com/ws/relay", false);
+        url = field(card, "Relay URL", "https://questrelay.example.workers.dev", false);
         url.setText(getPreferences(MODE_PRIVATE).getString("url",
                 BuildConfig.DEBUG ? "ws://127.0.0.1:8788/ws/relay" : ""));
         key = field(card, "Publisher key", "Paste your publisher key", true);
@@ -266,9 +268,31 @@ public final class MainActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar bar) { }
         });
         quality.addView(bitrate);
-        TextView guide = text("Auto adjusts to relay publisher/viewer load and the live send queue. Device encoder limits still apply", 12, MUTED, false);
+        TextView guide = text("Auto responds to headset uplink loss and viewer load. Check recent viewer loss on the website too", 12, MUTED, false);
         guide.setPadding(0, 0, 0, dp(14));
         quality.addView(guide);
+        quality.addView(text("Resolution", 14, TEXT, true));
+        LinearLayout resolutionControls = row();
+        Button performance = button("720p · performance", false);
+        Button detail = button("1080p · detail", false);
+        performance.setOnClickListener(view -> {
+            resolutionHeight = 720;
+            styleChoice(performance, true);
+            styleChoice(detail, false);
+        });
+        detail.setOnClickListener(view -> {
+            resolutionHeight = 1080;
+            styleChoice(performance, false);
+            styleChoice(detail, true);
+        });
+        resolutionControls.addView(performance, new LinearLayout.LayoutParams(0, dp(45), 1));
+        LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(0, dp(45), 1);
+        detailParams.leftMargin = dp(9);
+        resolutionControls.addView(detail, detailParams);
+        resolutionControls.setPadding(0, dp(8), 0, dp(16));
+        quality.addView(resolutionControls);
+        styleChoice(performance, resolutionHeight == 720);
+        styleChoice(detail, resolutionHeight != 720);
         quality.addView(text("Frame rate", 14, TEXT, true));
         LinearLayout fpsControls = row();
         Button slow = button("30 fps", false);
@@ -301,7 +325,7 @@ public final class MainActivity extends Activity {
         statsText.setTypeface(Typeface.MONOSPACE);
         statsText.setLineSpacing(dp(7), 1f);
         card.addView(statsText);
-        TextView gaugeLabel = text("SEND QUEUE · target under 32 KB", 12, MUTED, true);
+        TextView gaugeLabel = text("SEND QUEUE · local relay only", 12, MUTED, true);
         gaugeLabel.setPadding(0, dp(18), 0, dp(7));
         card.addView(gaugeLabel);
         queueGauge = new android.widget.ProgressBar(this, null,
@@ -341,13 +365,16 @@ public final class MainActivity extends Activity {
         String address = url.getText().toString().trim();
         try {
             URI parsed = new URI(address);
-            boolean secure = "wss".equals(parsed.getScheme());
+            boolean edge = "https".equals(parsed.getScheme())
+                    && (parsed.getPath().isEmpty() || "/".equals(parsed.getPath()));
+            boolean secure = "wss".equals(parsed.getScheme())
+                    && "/ws/relay".equals(parsed.getPath());
             boolean localDebug = BuildConfig.DEBUG && "ws".equals(parsed.getScheme())
                     && ("127.0.0.1".equals(parsed.getHost()) || "localhost".equals(parsed.getHost()));
-            if ((!secure && !localDebug) || parsed.getHost() == null
-                    || !"/ws/relay".equals(parsed.getPath()) || parsed.getUserInfo() != null
+            if ((!edge && !secure && !localDebug) || parsed.getHost() == null
+                    || (!edge && !"/ws/relay".equals(parsed.getPath())) || parsed.getUserInfo() != null
                     || parsed.getRawQuery() != null || parsed.getRawFragment() != null) {
-                settingsMessage.setText("Use a WSS relay URL ending in /ws/relay");
+                settingsMessage.setText("Use the HTTPS site address or a WSS relay URL ending in /ws/relay");
                 return false;
             }
         } catch (Exception error) {
@@ -370,6 +397,7 @@ public final class MainActivity extends Activity {
                     .putString("headsetId", id)
                     .putInt("bitrateMbps", bitrateMbps)
                     .putInt("fps", fps)
+                    .putInt("resolutionHeight", resolutionHeight)
                     .putBoolean("autoQuality", autoQuality)
                     .commit();
             if (!saved) throw new IllegalStateException("Could not save settings");
@@ -421,6 +449,7 @@ public final class MainActivity extends Activity {
                 .putExtra("bitrate", bitrateMbps * 1_000_000)
                 .putExtra("autoQuality", autoQuality)
                 .putExtra("fps", fps);
+        service.putExtra("height", resolutionHeight);
         startForegroundService(service);
         CaptureService.status = "Starting capture";
         showTab(0);
@@ -431,8 +460,10 @@ public final class MainActivity extends Activity {
         URI health;
         try {
             URI relay = new URI(address);
-            if (relay.getHost() == null || !"/ws/relay".equals(relay.getPath())) throw new IllegalArgumentException();
-            health = new URI("wss".equals(relay.getScheme()) ? "https" : "http", null,
+            boolean edge = "https".equals(relay.getScheme())
+                    && (relay.getPath().isEmpty() || "/".equals(relay.getPath()));
+            if (relay.getHost() == null || (!edge && !"/ws/relay".equals(relay.getPath()))) throw new IllegalArgumentException();
+            health = new URI(edge || "wss".equals(relay.getScheme()) ? "https" : "http", null,
                     relay.getHost(), relay.getPort(), "/health", null, null);
         } catch (Exception error) {
             settingsMessage.setText("Enter a valid relay URL first");
@@ -459,11 +490,13 @@ public final class MainActivity extends Activity {
     private void copyDiagnostics() {
         CaptureService.Stats sample = CaptureService.stats;
         String report = String.format(Locale.US,
-                "QuestRelay diagnostics\nStatus: %s\nHeadset: %s\nVideo: %d packets, %d b/s\nAudio: %d packets, %d b/s\nQueue: %d bytes\nReconnects: %d\nProfile: %dx%d %d fps\nQuality: %s, target %d b/s\nLoad: %d publishers, %d viewers\nMedia: video %s, audio %s\nSample age: %s",
+                "QuestRelay diagnostics\nStatus: %s\nHeadset: %s\nVideo: %d packets, %d b/s\nAudio: %d packets, %d b/s\nQueue: %s\nReconnects: %d\nProfile: %dx%d %d fps target, %d encoded\nUplink loss: %s\nQuality: %s, target %d b/s\nLoad: %d publishers, %d viewers\nMedia: video %s, audio %s\nSample age: %s",
                 CaptureService.status, headsetId.getText(), sample.videoPackets,
                 sample.videoBitrate, sample.audioPackets, sample.audioBitrate,
-                sample.queueBytes, CaptureService.reconnects, CaptureService.captureWidth,
-                CaptureService.captureHeight, CaptureService.captureFps,
+                sample.queueBytes < 0 ? "Not measured" : sample.queueBytes + " bytes",
+                CaptureService.reconnects, CaptureService.captureWidth,
+                CaptureService.captureHeight, CaptureService.captureFps, CaptureService.encodedFps,
+                CaptureService.uplinkLossPercent < 0 ? "waiting" : CaptureService.uplinkLossPercent + "%",
                 autoQuality ? "Auto" : "Manual", CaptureService.targetBitrateBps,
                 CaptureService.publisherLoad, CaptureService.viewerLoad,
                 CaptureService.videoEnabled ? "on" : "off",
@@ -488,18 +521,26 @@ public final class MainActivity extends Activity {
         String age = sample.sampledAtMs == 0 ? "Waiting" : (SystemClock.elapsedRealtime() - sample.sampledAtMs) / 1000 + " s";
         String up = CaptureService.running ? (SystemClock.elapsedRealtime() - CaptureService.startedAtMs) / 1000 + " s" : "Stopped";
         statsText.setText(String.format(Locale.US,
-                "Video       %,d packets  ·  %s\nAudio       %,d packets  ·  %s\nQueue       %,d bytes\nTarget      %s · %s\nLoad        %d publishers · %d viewers\nMedia       video %s · audio %s\nSample age  %s\nSession     %s\nReconnects  %d\nProfile     %d × %d · %d fps",
+                "Video       %,d packets  ·  %s\nAudio       %,d packets  ·  %s\nQueue       %s\nTarget      %s · %s\nUplink loss %s\nLoad        %d publishers · %d viewers\nMedia       video %s · audio %s\nSample age  %s\nSession     %s\nReconnects  %d\nProfile     %d × %d · %d fps target\nEncoded     %d fps",
                 sample.videoPackets, rate(sample.videoBitrate), sample.audioPackets,
-                rate(sample.audioBitrate), sample.queueBytes,
+                rate(sample.audioBitrate), sample.queueBytes < 0 ? "Not measured" : sample.queueBytes + " bytes",
                 rate(CaptureService.targetBitrateBps), autoQuality ? "Auto" : "Manual",
+                CaptureService.uplinkLossPercent < 0 ? "Waiting" : CaptureService.uplinkLossPercent + "%",
                 CaptureService.publisherLoad, CaptureService.viewerLoad,
                 CaptureService.videoEnabled ? "on" : "off",
                 CaptureService.audioEnabled ? "on" : "off",
                 age, up, CaptureService.reconnects, CaptureService.captureWidth,
-                CaptureService.captureHeight, CaptureService.captureFps));
-        queueGauge.setProgress((int) Math.min(256, sample.queueBytes / 1000), true);
+                CaptureService.captureHeight, CaptureService.captureFps,
+                CaptureService.encodedFps));
+        queueGauge.setVisibility(sample.queueBytes < 0 ? View.GONE : View.VISIBLE);
+        if (sample.queueBytes >= 0)
+            queueGauge.setProgress((int) Math.min(256, sample.queueBytes / 1000), true);
         statsAdvice.setText(sample.sampledAtMs == 0 ? "Waiting for a relay sample"
                 : sample.queueBytes > 128_000 ? "Send queue rising · Auto will lower bitrate; check Wi-Fi"
+                : CaptureService.uplinkLossPercent >= 3
+                    ? "Quest uplink is losing packets · lower bitrate or check Wi-Fi"
+                : CaptureService.encodedFps > 0 && CaptureService.encodedFps < CaptureService.captureFps * 3 / 4
+                    ? "Encoded frame rate is below target · the Quest capture path may be limiting it"
                 : sample.videoPackets == 0 && CaptureService.videoEnabled
                     ? "No video packets at relay · check screen capture consent"
                     : sample.audioPackets == 0 && CaptureService.audioEnabled

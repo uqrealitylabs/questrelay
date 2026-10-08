@@ -12,7 +12,7 @@ import okhttp3.WebSocketListener;
 import okio.ByteString;
 import org.json.JSONObject;
 
-final class RelaySocket implements AutoCloseable {
+final class RelaySocket implements MediaRelay {
     private static final String TAG = "QuestRelay";
     private final OkHttpClient client = new OkHttpClient.Builder()
             .pingInterval(15, TimeUnit.SECONDS)
@@ -38,14 +38,14 @@ final class RelaySocket implements AutoCloseable {
         this.onFatal = onFatal;
     }
 
-    void start() {
+    public void start() {
         running = true;
         thread = new Thread(this::connectLoop, "relay-connection");
         thread.start();
     }
 
     // ponytail: TCP can retain stale media on packet loss; move ingest to WebRTC/SRTP if WAN measurements miss the latency budget
-    synchronized boolean sendVideo(List<byte[]> packets) {
+    public synchronized boolean sendVideo(List<byte[]> packets) {
         WebSocket current = socket;
         if (!CaptureService.videoEnabled) return true;
         if (!ready || current == null || current.queueSize() > 256_000) return false;
@@ -55,7 +55,7 @@ final class RelaySocket implements AutoCloseable {
         return true;
     }
 
-    synchronized boolean sendAudio(byte[] packet) {
+    public synchronized boolean sendAudio(byte[] packet) {
         WebSocket current = socket;
         if (!CaptureService.audioEnabled) return true;
         if (!ready || current == null) return false;
@@ -144,7 +144,7 @@ final class RelaySocket implements AutoCloseable {
                                         data.getJSONObject("audio").getLong("bitrate"),
                                         webSocket.queueSize(),
                                         android.os.SystemClock.elapsedRealtime());
-                                service.adjustBitrate(webSocket.queueSize());
+                                service.adjustBitrate(-1, webSocket.queueSize());
                                 Log.i(TAG, "Relay packets: video=" + videoPackets
                                         + " audio=" + audioPackets);
                             }
@@ -191,6 +191,7 @@ final class RelaySocket implements AutoCloseable {
                                     .put("width", CaptureService.captureWidth)
                                     .put("height", CaptureService.captureHeight)
                                     .put("fps", CaptureService.captureFps)
+                                    .put("encodedFps", CaptureService.encodedFps)
                                     .toString());
                         } catch (Exception error) {
                             Log.w(TAG, "Could not report capture stats", error);
