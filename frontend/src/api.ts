@@ -33,6 +33,7 @@ export type AdminAccount = {
 
 export type AuthState = {
   enabled: boolean;
+  message?: string;
   currentId?: string;
   owner?: boolean;
   accounts?: AdminAccount[];
@@ -74,13 +75,15 @@ export type AdminState = {
       capture: {
         videoEnabled: boolean;
         audioEnabled: boolean;
-        queueBytes: number;
+        queueBytes: number | null;
         targetBitrateBps: number;
         width: number;
         height: number;
         fps: number;
+        encodedFps?: number;
+        uplinkLossPercent?: number;
       } | null;
-      history: Array<{ at: number; videoBitrate: number; queueBytes: number }>;
+      history: Array<{ at: number; videoBitrate: number; queueBytes: number | null }>;
     }>;
   };
 };

@@ -19,6 +19,10 @@ function formatRate(bits?: number) {
     : `${Math.round(bits / 1_000)} kb/s`;
 }
 
+function formatQueue(bytes?: number | null) {
+  return bytes == null ? "Not measured" : `${Math.round(bytes / 1000)} KB`;
+}
+
 function duration(seconds: number) {
   if (seconds < 60) return `${seconds}s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
@@ -51,22 +55,23 @@ function Uptime({ relay }: { relay: AdminState["relay"] }) {
   const history = relay.history ?? [];
   const healthy = history.filter((sample) => sample.healthy).length;
   const percentage = history.length ? (healthy / history.length) * 100 : 0;
+  const edge = relay.rtcPort === 0;
   return (
     <div className="uptime-card">
       <div className="uptime-heading">
         <div>
           <span className="eyebrow">Relay history</span>
-          <strong>Uptime</strong>
+          <strong>{edge ? "Observed activity" : "Uptime"}</strong>
         </div>
         <div className="uptime-value">
-          <strong>{percentage.toFixed(1)}%</strong>
-          <small>{duration(relay.uptimeSeconds)} since restart</small>
+          <strong>{edge ? `${history.length} samples` : `${percentage.toFixed(1)}%`}</strong>
+          <small>{edge ? "Recorded while the control room is open" : `${duration(relay.uptimeSeconds)} since restart`}</small>
         </div>
       </div>
       <div
         className="uptime-graph"
         role="img"
-        aria-label={`${percentage.toFixed(1)} percent availability across ${history.length} observed samples in the last 15 minutes`}
+        aria-label={edge ? `${history.length} activity samples in the last 15 minutes` : `${percentage.toFixed(1)} percent availability across ${history.length} observed samples in the last 15 minutes`}
       >
         {Array.from({ length: 180 }, (_, slot) => ({
           slot,
@@ -136,7 +141,7 @@ function HeadsetRow({ headset, onToggle, busy }: { headset: Headset; onToggle: (
           </span>
           <span>
             <small>Send queue</small>
-            <strong>{headset.capture ? `${Math.round(headset.capture.queueBytes / 1000)} KB` : "—"}</strong>
+            <strong>{formatQueue(headset.capture?.queueBytes)}</strong>
           </span>
         </span>
         <span className="row-chevron" aria-hidden="true">
@@ -166,7 +171,7 @@ function HeadsetRow({ headset, onToggle, busy }: { headset: Headset; onToggle: (
           <div className="headset-trend">
             <div><span>Video bitrate · last {Math.min(5, Math.ceil(headset.history.length / 12))} min</span><strong>{formatRate(video?.bitrate)}</strong></div>
             <div className="trend-bars" role="img" aria-label={`Video bitrate history, latest ${formatRate(video?.bitrate)}`}>
-              {headset.history.map((sample) => <i key={sample.at} title={`${new Date(sample.at).toLocaleTimeString()} · ${formatRate(sample.videoBitrate)} · ${Math.round(sample.queueBytes / 1000)} KB queued`} style={{ height: `${Math.max(4, Math.round(sample.videoBitrate / peak * 100))}%` }} />)}
+              {headset.history.map((sample) => <i key={sample.at} title={`${new Date(sample.at).toLocaleTimeString()} · ${formatRate(sample.videoBitrate)} · queue ${formatQueue(sample.queueBytes)}`} style={{ height: `${Math.max(4, Math.round(sample.videoBitrate / peak * 100))}%` }} />)}
             </div>
             <div className="trend-axis"><span>Older</span><span>Latest</span></div>
           </div>
@@ -185,7 +190,9 @@ function HeadsetRow({ headset, onToggle, busy }: { headset: Headset; onToggle: (
               <dt>Video bytes</dt>
               <dd>{video?.bytes.toLocaleString() ?? "—"}</dd>
             </div>
-            <div><dt>Capture profile</dt><dd>{headset.capture ? `${headset.capture.width} × ${headset.capture.height} · ${headset.capture.fps} fps` : "Waiting for app"}</dd></div>
+            <div><dt>Capture profile</dt><dd>{headset.capture ? `${headset.capture.width} × ${headset.capture.height} · ${headset.capture.fps} fps target` : "Waiting for app"}</dd></div>
+            <div><dt>Encoded frames</dt><dd>{headset.capture?.encodedFps == null ? "Waiting for app" : `${headset.capture.encodedFps} fps`}</dd></div>
+            <div><dt>Quest uplink loss</dt><dd>{headset.capture?.uplinkLossPercent == null || headset.capture.uplinkLossPercent < 0 ? "Waiting for feedback" : `${headset.capture.uplinkLossPercent}%`}</dd></div>
             <div><dt>Encoder target</dt><dd>{formatRate(headset.capture?.targetBitrateBps)}</dd></div>
             <div>
               <dt>Video producer</dt>
@@ -223,7 +230,7 @@ function HeadsetRow({ headset, onToggle, busy }: { headset: Headset; onToggle: (
                   : `${headset.controlRttMs} ms`}
               </dd>
             </div>
-            <div><dt>Send queue</dt><dd>{headset.capture ? `${headset.capture.queueBytes.toLocaleString()} bytes` : "—"}</dd></div>
+            <div><dt>Send queue</dt><dd>{headset.capture?.queueBytes == null ? "Not measured" : `${headset.capture.queueBytes.toLocaleString()} bytes`}</dd></div>
             <div><dt>Connected</dt><dd>{duration(headset.connectedSeconds)}</dd></div>
             <div>
               <dt>Glass-to-glass</dt>
@@ -327,12 +334,13 @@ export function OperatorPage() {
 
   const shareUrl = draft ? `${location.origin}/livestream/${draft.id}` : "";
   const theme = draft?.theme ?? fallback;
+  const edge = state?.relay.rtcPort === 0;
 
   return (
     <Shell
       theme={theme}
       room={draft ?? undefined}
-      mascotSituation={message ? "error" : state ? (state.relay.healthy ? "live" : "offline") : "waiting"}
+      mascotSituation={message ? "error" : state ? (state.relay.headsets.length > 0 ? "live" : state.relay.healthy ? "waiting" : "offline") : "waiting"}
       feedCount={state?.relay.headsets.length}
       rooms={state?.rooms}
       onSaved={signedIn ? (settings) => {
@@ -363,7 +371,9 @@ export function OperatorPage() {
               className={`connection-label ${state.relay.healthy ? "online" : ""}`}
             >
               <i />
-              {state.relay.healthy ? "Relay healthy" : "Relay unavailable"}
+              {edge
+                ? state.relay.healthy ? "SFU configured" : "SFU missing"
+                : state.relay.healthy ? "Relay healthy" : "Relay unavailable"}
             </span>
             <button
               className="header-button"
@@ -501,19 +511,18 @@ export function OperatorPage() {
             <div className="metric">
               <span>Highest send queue</span>
               <strong className="metric-word">
-                {Math.round(Math.max(0, ...state.relay.headsets.map((headset) => headset.capture?.queueBytes ?? 0)) / 1000)} KB
+                {edge ? "Not measured" : `${Math.round(Math.max(0, ...state.relay.headsets.map((headset) => headset.capture?.queueBytes ?? 0)) / 1000)} KB`}
               </strong>
-              <small>below 32 KB is ideal</small>
+              <small>{edge ? "not reported by Cloudflare SFU" : "below 32 KB is ideal"}</small>
             </div>
             <div className="metric">
-              <span>Media worker</span>
+              <span>{edge ? "SFU credentials" : "Media worker"}</span>
               <strong className="metric-word">
-                {state.relay.healthy ? "Ready" : "Offline"}
+                {edge ? state.relay.healthy ? "Set" : "Missing" : state.relay.healthy ? "Ready" : "Offline"}
               </strong>
               <small>
-                {state.relay.healthy
-                  ? "accepting connections"
-                  : "needs attention"}
+                {edge ? state.relay.healthy ? "check playback to verify media" : "add the app secret"
+                  : state.relay.healthy ? "accepting connections" : "needs attention"}
               </small>
             </div>
           </div>
@@ -597,8 +606,8 @@ export function OperatorPage() {
               <div>
                 <span>Media route</span>
                 <strong>
-                  {state.relay.announcedAddress ?? "Local network"} · UDP/TCP{" "}
-                  {state.relay.rtcPort}
+                  {state.relay.announcedAddress ?? "Local network"}
+                  {state.relay.rtcPort > 0 ? ` · UDP/TCP ${state.relay.rtcPort}` : " · WebRTC"}
                 </strong>
                 <p>
                   WebRTC viewer transport. A reachable route is needed for

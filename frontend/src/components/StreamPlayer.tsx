@@ -146,7 +146,11 @@ export function StreamPlayer({
                 </dd>
               </div>
               <div>
-                <dt>Packets lost</dt>
+                <dt>Recent video loss</dt>
+                <dd>{stats?.video?.recentLossPercent == null ? "Measuring" : `${stats.video.recentLossPercent}%`}</dd>
+              </div>
+              <div>
+                <dt>Packets lost this session</dt>
                 <dd>{(stats?.video?.lost ?? 0) + (stats?.audio?.lost ?? 0)}</dd>
               </div>
               <div>

@@ -1,15 +1,15 @@
 import { expect, it, vi } from "vitest";
 import type { Feed } from "./api";
-import { Viewer } from "./viewer";
+import { LocalViewer } from "./localviewer";
 
 it("resubscribes to a selected headset after it disconnects and returns", () => {
-  const viewer = Reflect.construct(Viewer, [
+  const viewer = Reflect.construct(LocalViewer, [
     {},
     {},
     {},
     vi.fn(),
     vi.fn(),
-  ]) as Viewer;
+  ]) as LocalViewer;
   const internal = viewer as unknown as {
     selected: Set<string>;
     subscriptions: Map<

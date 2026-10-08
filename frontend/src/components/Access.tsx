@@ -29,7 +29,7 @@ export function Access({ auth, update, report }: {
         <span className="section-hint">Individual passkeys · owner recovery key</span>
       </div>
       {!auth.enabled ? (
-        <div className="access-hint">Set <code>QUESTRELAY_WEBAUTHN_ORIGIN</code> to this site's HTTPS origin to enable passkeys</div>
+        <div className="access-hint">{auth.message ?? <>Set <code>QUESTRELAY_WEBAUTHN_ORIGIN</code> to this site's HTTPS origin to enable passkeys</>}</div>
       ) : (
         <div className="access-grid">
           <div className="admin-access-card">
