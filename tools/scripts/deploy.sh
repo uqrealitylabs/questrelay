@@ -1,10 +1,67 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if (( $# < 2 || $# > 3 )); then
-  echo "Usage: tools/scripts/deploy.sh <ssh-target> <release-archive> [env-file]" >&2
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage:
+  tools/scripts/deploy.sh cloudflare [--init-db]
+  tools/scripts/deploy.sh server <ssh-target> <release-archive> [env-file]
+  tools/scripts/deploy.sh adb devices
+  tools/scripts/deploy.sh adb send <adb-id>
+
+The send command installs the debug app only on the selected Quest; enter its
+relay URL and publisher key in the app Settings
+USAGE
   exit 2
-fi
+}
+
+(( $# > 0 )) || usage
+case $1 in
+  cloudflare)
+    shift
+    if (( $# > 1 )) || [[ ${1:-} != '' && ${1:-} != --init-db ]]; then usage; fi
+    if ! command -v worker-build >/dev/null; then
+      echo 'Install worker-build 0.8.7 with cargo install worker-build --version 0.8.7 --locked' >&2
+      exit 1
+    fi
+    cd "$root"
+    npm run build -w @questrelay/shared
+    npm run build -w @questrelay/web
+    cd backend/edge
+    if [[ ${1:-} == --init-db ]]; then
+      npx --yes wrangler@4.144.0 d1 execute questrelay-edge --remote --file schema.sql
+    fi
+    npx --yes wrangler@4.144.0 deploy
+    exit 0
+    ;;
+  adb)
+    if [[ ${2:-} != devices || $# != 2 ]] && [[ ${2:-} != send || $# != 3 ]]; then usage; fi
+    adb_bin=${ADB:-adb}
+    command -v "$adb_bin" >/dev/null || { echo "ADB not found: $adb_bin" >&2; exit 1; }
+    if [[ $2 == devices ]]; then
+      exec "$adb_bin" devices -l
+    fi
+    device=$3
+    if [[ $("$adb_bin" -s "$device" get-state 2>/dev/null) != device ]]; then
+      echo "Quest $device is not connected and authorised; check adb devices" >&2
+      exit 1
+    fi
+    command -v gradle >/dev/null || { echo 'Gradle not found; install it before sending the Quest app' >&2; exit 1; }
+    bash "$root/tools/scripts/build-transport.sh"
+    gradle -p "$root/quest/app" :app:assembleDebug --no-daemon
+    "$adb_bin" -s "$device" install -r "$root/quest/app/app/build/outputs/apk/debug/app-debug.apk"
+    "$adb_bin" -s "$device" shell am start -n com.uqrealitylabs.questrelay/.MainActivity
+    printf 'QuestRelay installed on %s. Set its relay URL and publisher key in the app Settings\n' "$device"
+    exit 0
+    ;;
+  server)
+    shift
+    (( $# >= 2 && $# <= 3 )) || usage
+    ;;
+  *) usage ;;
+esac
 
 remote=$1
 archive=$2

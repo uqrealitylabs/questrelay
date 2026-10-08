@@ -54,3 +54,4 @@ jobs:
       - if: steps.audit-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-audit --locked
       - run: cargo audit --file backend/Cargo.lock
+      - run: cargo audit --file backend/edge/Cargo.lock

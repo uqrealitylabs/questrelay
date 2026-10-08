@@ -15,6 +15,7 @@ jobs:
     outputs:
       web: ${{ steps.paths.outputs.web }}
       backend: ${{ steps.paths.outputs.backend }}
+      edge: ${{ steps.paths.outputs.edge }}
       quest: ${{ steps.paths.outputs.quest }}
       deploy: ${{ steps.paths.outputs.deploy }}
     steps:
@@ -85,6 +86,37 @@ jobs:
       - run: cargo test --manifest-path backend/Cargo.toml --locked
       - run: cargo clippy --manifest-path backend/Cargo.toml --locked -- -D warnings
 
+  edge:
+    needs: detect
+    if: needs.detect.outputs.edge == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/edge/target
+          key: edge-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('backend/edge/Cargo.lock') }}
+          restore-keys: edge-${{ runner.os }}-${{ runner.arch }}-
+      - run: cargo fmt --manifest-path backend/edge/Cargo.toml -- --check
+      - run: cargo clippy --manifest-path backend/edge/Cargo.toml --locked --target wasm32-unknown-unknown -- -D warnings
+      - run: cargo test --manifest-path backend/edge/Cargo.toml --locked
+      - id: worker-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/worker-build
+          key: worker-build-0.8.7-${{ runner.os }}-${{ runner.arch }}
+      - if: steps.worker-cache.outputs.cache-hit != 'true'
+        run: cargo install worker-build --version 0.8.7 --locked
+      - run: worker-build --release
+        working-directory: backend/edge
+
   quest:
     needs: detect
     if: needs.detect.outputs.quest == 'true'
@@ -95,8 +127,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: quest/transport/go.mod
+          cache-dependency-path: quest/transport/go.sum
       - uses: android-actions/setup-android@v4
-      - run: sdkmanager 'platforms;android-35' 'build-tools;36.0.0'
+      - run: sdkmanager 'platforms;android-35' 'build-tools;36.0.0' 'ndk;27.2.12479018'
+      - run: go test ./...
+        working-directory: quest/transport
+      - run: ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018" bash tools/scripts/build-transport.sh
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.6.0'

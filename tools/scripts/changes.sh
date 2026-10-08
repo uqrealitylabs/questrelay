@@ -7,19 +7,19 @@ if (( $# > 1 )) || [[ $mode != event && $mode != --all && $mode != --paths ]]; t
   exit 2
 fi
 
-web=false backend=false quest=false deploy=false npm_audit=false rust_audit=false
+web=false backend=false edge=false quest=false deploy=false npm_audit=false rust_audit=false
 
 if [[ $mode == --paths ]]; then
   exec 3<&0
 elif [[ $mode == --all || ${GITHUB_REF:-} == refs/tags/* || ${GITHUB_EVENT_NAME:-} == schedule || ${GITHUB_EVENT_NAME:-} == workflow_dispatch ]]; then
-  web=true backend=true quest=true deploy=true npm_audit=true rust_audit=true
+  web=true backend=true edge=true quest=true deploy=true npm_audit=true rust_audit=true
 elif [[ $mode == event ]]; then
   if [[ -n ${PR_BASE:-} && -n ${PR_HEAD:-} ]]; then
     range="$PR_BASE...$PR_HEAD"
   elif [[ -n ${BEFORE:-} && ! ${BEFORE} =~ ^0+$ ]]; then
     range="$BEFORE..${GITHUB_SHA:?}"
   else
-    web=true backend=true quest=true deploy=true npm_audit=true rust_audit=true
+    web=true backend=true edge=true quest=true deploy=true npm_audit=true rust_audit=true
   fi
 
   if [[ -n ${range:-} ]]; then
@@ -29,22 +29,26 @@ elif [[ $mode == event ]]; then
       exec 3< "$changed"
     else
       echo 'Could not compare commits; running every check' >&2
-      web=true backend=true quest=true deploy=true npm_audit=true rust_audit=true
+      web=true backend=true edge=true quest=true deploy=true npm_audit=true rust_audit=true
     fi
   fi
 fi
 
-if [[ $web == false && $backend == false && $quest == false && $deploy == false && $npm_audit == false && $rust_audit == false ]]; then
+if [[ $web == false && $backend == false && $edge == false && $quest == false && $deploy == false && $npm_audit == false && $rust_audit == false ]]; then
   while IFS= read -r -d '' -u 3 path; do
     case "$path" in
       .github/workflows/check.yml|tools/scripts/changes.sh)
-        web=true backend=true quest=true deploy=true npm_audit=true rust_audit=true ;;
+        web=true backend=true edge=true quest=true deploy=true npm_audit=true rust_audit=true ;;
       .github/workflows/security.yml)
         npm_audit=true rust_audit=true ;;
       package.json|package-lock.json|frontend/package.json|frontend/*/package.json|quest/prototype-server/package.json)
         web=true npm_audit=true ;;
       backend/Cargo.toml|backend/Cargo.lock)
         backend=true rust_audit=true ;;
+      backend/edge/Cargo.toml|backend/edge/Cargo.lock)
+        edge=true rust_audit=true ;;
+      backend/edge/*)
+        edge=true ;;
       backend/Dockerfile)
         backend=true deploy=true ;;
       frontend/Dockerfile)
@@ -55,11 +59,15 @@ if [[ $web == false && $backend == false && $quest == false && $deploy == false 
         web=true ;;
       quest/app/*)
         quest=true ;;
+      quest/transport/*|tools/scripts/build-transport.sh)
+        quest=true ;;
+      tools/scripts/deploy.sh)
+        web=true backend=true edge=true quest=true deploy=true ;;
       .dockerignore|.gitignore|tools/config/.env.example|tools/config/compose.yaml|tools/config/Caddyfile|tools/scripts/*|.github/workflows/release.yml)
         deploy=true ;;
     esac
   done
 fi
 
-printf 'web=%s\nbackend=%s\nquest=%s\ndeploy=%s\nnpm_audit=%s\nrust_audit=%s\n' \
-  "$web" "$backend" "$quest" "$deploy" "$npm_audit" "$rust_audit"
+printf 'web=%s\nbackend=%s\nedge=%s\nquest=%s\ndeploy=%s\nnpm_audit=%s\nrust_audit=%s\n' \
+  "$web" "$backend" "$edge" "$quest" "$deploy" "$npm_audit" "$rust_audit"
