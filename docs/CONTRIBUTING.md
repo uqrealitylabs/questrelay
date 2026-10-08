@@ -4,7 +4,7 @@ Thanks for helping make QuestRelay easier to watch, run or debug. Please follow 
 
 ## Find your way around
 
-The [README](../README.md#get-it-running-locally) gets the relay and web app running. If you need to change how a feed travels from a Quest to a browser, read the [architecture guide](ARCHITECTURE.md) first. The web UI lives in `frontend/src`, the Rust service in `backend/src`, and the headset app in `quest/app`. Deployment files live in `tools/config` and `tools/scripts`
+The [README](../README.md#get-it-running-locally) gets the relay and web app running. If you need to change how a feed travels from a Quest to a browser, read the [architecture guide](ARCHITECTURE.md) first. The web UI lives in `frontend/src`, the single-host Rust service in `backend/src`, the Cloudflare Worker in `backend/edge`, and the headset app in `quest/app`. The headset's WebRTC transport lives in `quest/transport`. Deployment files live in `tools/config` and `tools/scripts`
 
 ## Make a change
 
@@ -17,16 +17,25 @@ You should be able to explain and maintain what you submit, including code writt
 
 ## Build and test
 
-After `npm ci`, these commands cover the web and Rust code from the repository root:
+After `npm ci`, these commands cover the web app from the repository root:
 
 ```bash
 npm test
 npm run build
 ```
 
-For a Quest app change, use JDK 17, Gradle 9.6 and Android SDK platform 35:
+For the Cloudflare Worker and headset transport, run:
 
 ```bash
+cargo test --manifest-path backend/edge/Cargo.toml --locked
+cargo clippy --manifest-path backend/edge/Cargo.toml --locked --target wasm32-unknown-unknown -- -D warnings
+cd quest/transport && go test ./...
+```
+
+For a Quest app change, use JDK 17, Go 1.26, Gradle 9.6, Android SDK platform 35 and NDK `27.2.12479018`. Build the transport AAR before the APK:
+
+```bash
+bash tools/scripts/build-transport.sh
 gradle -p quest/app :app:testDebugUnitTest :app:assembleDebug --no-daemon
 ```
 

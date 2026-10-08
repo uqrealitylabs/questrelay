@@ -1,9 +1,33 @@
 # How QuestRelay works
 
-QuestRelay is a single-server live media relay. A Quest companion app captures the headset display and eligible playback audio, a Rust service routes the encoded tracks, and browsers subscribe to the feeds they choose
+QuestRelay has a Cloudflare-hosted path and a single-host path. Both use the companion app's MediaProjection capture and hardware H.264 and Opus encoders, and both let viewers choose feeds in the same browser interface
 
 > [!NOTE]
 > The current design aims for low latency, but glass-to-glass delay has not been measured. No networked video system can guarantee zero latency
+
+## Cloudflare-hosted path
+
+```mermaid
+flowchart LR
+    Q[Quest capture app] -- H.264 and Opus RTP over WebRTC --> S[Cloudflare Realtime SFU]
+    V[Browser viewers] <-- WebRTC/SRTP --> S
+    Q -- HTTPS offer and heartbeat --> W[Rust Worker]
+    V -- HTTPS room and subscription API --> W
+    W -- Connection API with app secret --> S
+    W --> D[(D1 room, presence and diagnostics state)]
+```
+
+The Quest's Go/Pion bridge takes the RTP packets from the existing Android encoders, negotiates a publishing connection through the Rust Worker and sends the media directly to Cloudflare's SFU. Browser viewers negotiate receiving connections through the Worker. The SFU forwards encoded media without the Worker handling video frames or audio samples
+
+The Worker stores public and private room settings, short per-headset room IDs, active publisher leases and viewer subscriptions in D1. It holds the SFU App Secret, admin key and publisher key as Worker secrets. A private room requires an access code before it issues a viewer token; ticket attempts are throttled per client address. Admin sessions use Secure, HttpOnly cookies. The Worker expires old session and diagnostics rows daily
+
+The browser polls the feed list every five seconds and collects receiver-side WebRTC packet, jitter, codec and bitrate statistics. The Quest reports encoder packet counts and quality settings through a five-second control heartbeat. Neither value measures glass-to-glass delay. The Cloudflare test path currently has admin-key authentication only; the single-host backend's passkey management has not yet moved to the Worker
+
+See [the Cloudflare deployment guide](CLOUDFLARE.md) for the free-tier allowance, build steps and current test limits
+
+## Single-host path
+
+The Rust server and mediasoup worker remain available for local development and Docker deployments. This path accepts authenticated RTP from the Quest over WSS and forwards it to browsers over WebRTC
 
 ```mermaid
 flowchart LR

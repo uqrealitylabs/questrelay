@@ -1,6 +1,8 @@
-# Deploy QuestRelay
+# Deploy QuestRelay on one Linux host
 
 QuestRelay runs as one self-hosted Rust relay and one web server. The web server uses Caddy for HTTPS; browsers receive WebRTC media directly from the relay on port 44444
+
+For the Cloudflare-hosted path with no VM or public media port, use the [Cloudflare guide](CLOUDFLARE.md)
 
 > [!IMPORTANT]
 > A reachable web page does not prove the stream can play. Viewers must also reach the relay's announced address on UDP or TCP 44444. TURN is not integrated yet, so restrictive networks may fail
@@ -30,7 +32,7 @@ Commit the source you want to deploy, then package it and copy it to the VM:
 
 ```bash
 archive=$(tools/scripts/distribute.sh)
-tools/scripts/deploy.sh ubuntu@PUBLIC_IP "$archive" .env
+tools/scripts/deploy.sh server ubuntu@PUBLIC_IP "$archive" .env
 curl https://your-domain.example/health
 ```
 
