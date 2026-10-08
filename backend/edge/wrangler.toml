@@ -1,0 +1,24 @@
+name = "questrelay"
+main = "build/index.js"
+compatibility_date = "2026-09-30"
+workers_dev = true
+
+[triggers]
+crons = ["0 4 * * *"]
+
+[build]
+command = "worker-build --release"
+
+[assets]
+directory = "../../frontend/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/health"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "questrelay-edge"
+database_id = "48db78e5-6f6b-4a46-b2c0-0fb7e2e3250d"
+
+[vars]
+SFU_APP_ID = "4114cfaa5e60defd5a771dd36c906a27"
