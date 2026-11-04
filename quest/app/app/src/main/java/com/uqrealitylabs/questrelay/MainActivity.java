@@ -87,7 +87,7 @@ public final class MainActivity extends Activity {
         resolutionHeight = getPreferences(MODE_PRIVATE).getInt("resolutionHeight", 1080);
         autoQuality = getPreferences(MODE_PRIVATE).getBoolean("autoQuality", true);
         buildInterface();
-        showTab(0);
+        showTab(provision() ? 0 : 1);
     }
 
     private void buildInterface() {
@@ -211,8 +211,7 @@ public final class MainActivity extends Activity {
                 BuildConfig.DEBUG ? "ws://127.0.0.1:8788/ws/relay" : ""));
         key = field(card, "Publisher key", "Paste your publisher key", true);
         try {
-            String injected = BuildConfig.DEBUG ? getIntent().getStringExtra("publisherKey") : null;
-            key.setText(injected != null ? injected : Secret.load(this));
+            key.setText(Secret.load(this));
         } catch (Exception error) {
             key.setText("");
         }
@@ -359,6 +358,22 @@ public final class MainActivity extends Activity {
             panel.animate().alpha(1).translationY(0).setDuration(170).start();
         }
         updateStatus();
+    }
+
+    private boolean provision() {
+        if (!BuildConfig.DEBUG) return true;
+        String address = getIntent().getStringExtra("relayUrl");
+        String publisherKey = getIntent().getStringExtra("publisherKey");
+        if (address == null && publisherKey == null) return true;
+        if (address == null || publisherKey == null) {
+            settingsMessage.setText("Automatic setup needs both the relay URL and publisher key");
+            return false;
+        }
+        url.setText(address);
+        key.setText(publisherKey);
+        if (!saveSettings()) return false;
+        settingsMessage.setText("Secure connection settings saved on this headset");
+        return true;
     }
 
     private boolean saveSettings() {

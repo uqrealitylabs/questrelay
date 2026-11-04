@@ -40,7 +40,7 @@ npx wrangler secret put PUBLISHER_KEY
 npx wrangler secret list
 ```
 
-The existing staging admin and publisher keys are already bound and have a local recovery copy in `.env.edge.local` at the repository root. Never paste any of these values into an issue, release or chat
+Keep the publisher key as `QUESTRELAY_PUBLISH_KEY` in the ignored repository `.env` so the headset provisioner can install it securely. Never paste any of these values into an issue, release or chat
 
 ## Deploy and check
 
@@ -59,10 +59,10 @@ For a USB development test, install JDK 17+, Go 1.26+, Gradle 9.6 and Android SD
 
 ```bash
 tools/scripts/deploy.sh adb devices
-tools/scripts/deploy.sh adb send YOUR_ADB_ID
+tools/scripts/deploy.sh headset YOUR_ADB_ID
 ```
 
-Repeat `adb send` with each Quest's own ADB ID. The command updates only that device and keeps its saved app settings. In each Quest app's **Settings** tab, set **Relay URL** to the Worker's HTTPS origin and **Publisher key** to the Worker publisher key. Give each headset a distinct name, use **Test relay**, then start sharing and approve the screen and audio capture prompts. A release-channel install without Developer Mode requires a signed APK and Meta distribution approval, which is separate from this USB test
+Repeat `headset` with each Quest's own ADB ID. The command builds and installs the debug app, saves `https://cast.uqrealitylabs.com` and the publisher key from `.env`, then opens the app ready to test. Each headset keeps its generated distinct name. Use **Test relay**, then start sharing and approve the screen and audio capture prompts. A release-channel install without Developer Mode requires a signed APK and Meta distribution approval, which is separate from this USB test
 
 ## Free-tier and test limits
 
