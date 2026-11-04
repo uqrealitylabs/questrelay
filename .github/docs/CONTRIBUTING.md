@@ -4,7 +4,7 @@ Thanks for helping make QuestRelay easier to watch, run or debug. Please follow 
 
 ## Find your way around
 
-The [README](../README.md#get-it-running-locally) gets the relay and web app running. If you need to change how a feed travels from a Quest to a browser, read the [architecture guide](ARCHITECTURE.md) first. The web UI lives in `frontend/src`, the single-host Rust service in `backend/src`, the Cloudflare Worker in `backend/edge`, and the headset app in `quest/app`. The headset's WebRTC transport lives in `quest/transport`. Deployment files live in `tools/config` and `tools/scripts`
+The [README](../../README.md#get-it-running-locally) gets the relay and web app running. If you need to change how a feed travels from a Quest to a browser, read the [architecture guide](../../docs/ARCHITECTURE.md) first. The web UI lives in `frontend/src`, the single-host Rust service in `backend/src`, the Cloudflare Worker in `backend/edge`, and the headset app in `quest/app`. The headset's WebRTC transport lives in `quest/transport`. Deployment files live in `tools/config` and `tools/scripts`
 
 ## Make a change
 
@@ -39,4 +39,4 @@ bash tools/scripts/build-transport.sh
 gradle -p quest/app :app:testDebugUnitTest :app:assembleDebug --no-daemon
 ```
 
-For release or deployment script changes, run `shellcheck tools/scripts/*.sh` and `docker compose -f tools/config/compose.yaml --project-directory . config --quiet` after preparing `.env` as shown in the [deployment guide](DEPLOY.md). GitHub Actions runs every project check for each pull request
+For release or deployment script changes, run `shellcheck tools/scripts/*.sh` and `docker compose -f tools/config/compose.yaml --project-directory . config --quiet` after preparing `.env` as shown in the [local deployment guide](../../docs/LOCAL.md). GitHub Actions runs every project check for each pull request

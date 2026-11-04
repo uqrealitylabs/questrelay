@@ -26,6 +26,20 @@ Set **different** values for `QUESTRELAY_PUBLISH_KEY`, `QUESTRELAY_VIEW_KEY` and
 
 The template's headset and viewer limits are admission limits, not a tested capacity guarantee. Raise them only after measuring CPU, network egress and playback on real devices
 
+## Run from a checkout
+
+For a public host, set `QUESTRELAY_DOMAIN` and `QUESTRELAY_RTC_ANNOUNCED_ADDRESS` to its DNS name, leave `QUESTRELAY_TLS` blank and set `QUESTRELAY_WEBAUTHN_ORIGIN` to the public HTTPS origin. Then start both services:
+
+```bash
+tools/scripts/deploy.sh dc
+```
+
+For an isolated LAN, use the host's stable LAN IP for the domain and announced address, set `QUESTRELAY_TLS="tls internal"`, and leave `QUESTRELAY_WEBAUTHN_ORIGIN` blank. The same command publishes HTTPS on TCP 80 and TCP/UDP 443, media on TCP/UDP 44444, and keeps the relay API inside the Compose network
+
+Caddy stores its private certificate authority in the `caddy_data` volume. The deploy command exports its public certificate as `questrelay-lan-ca.crt`; trust it in each viewing browser. The release Quest app needs a publicly trusted certificate because Android does not trust user-installed CAs by default
+
+Use `docker compose -f tools/config/compose.yaml --project-directory . down` to stop the stack without deleting its named volumes
+
 ## Ship a release
 
 Commit the source you want to deploy, then package it and copy it to the VM:
@@ -42,18 +56,7 @@ From v0.4.0 onward, release tags have `ghcr.io/uqrealitylabs/questrelay-backend:
 
 Open `https://your-domain.example/admin` and sign in with the admin key. Make the room public by link or set a private access code, then give each Quest the publisher key and `wss://your-domain.example/ws/relay`. The wearer starts sharing and approves the capture prompts
 
-<details>
-<summary>Run directly from a checkout</summary>
-
-With a valid `.env` in the repository root, run:
-
-```bash
-docker compose -f tools/config/compose.yaml --project-directory . up -d --build --wait
-```
-
 For a non-Docker installation, build the web app with Node.js and the relay with Rust, serve `frontend/dist` using [`tools/config/Caddyfile`](../tools/config/Caddyfile), and run the relay under an unprivileged account with a writable state directory
-
-</details>
 
 ## Before relying on it
 

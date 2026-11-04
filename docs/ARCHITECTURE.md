@@ -101,4 +101,4 @@ The admin's control RTT, packet counts, bitrate, queue and recent uptime samples
 
 </details>
 
-For production commands and network ports, see the [deployment guide](DEPLOY.md)
+For production commands and network ports, see the [local deployment guide](LOCAL.md)

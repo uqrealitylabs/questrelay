@@ -72,4 +72,4 @@ Two Quest 3 headsets have connected individually to the Worker. Safari received 
 
 The Worker currently supports admin-key sign-in, room access, per-headset rooms, media controls and diagnostics. The self-hosted backend's multi-admin passkeys have not yet been ported to the Worker. Audible game audio, simultaneous headset capacity, release-channel installation and glass-to-glass latency still need testing. Cloudflare does not report the Quest's send queue to this app, so the control room shows **Not measured** instead of zero. Audio capture depends on each game allowing Android playback capture
 
-For the single-host Rust relay and its Docker images, see [DEPLOY.md](DEPLOY.md)
+For the single-host Rust relay and its Docker images, see [LOCAL.md](LOCAL.md)

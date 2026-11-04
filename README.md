@@ -1,101 +1,98 @@
-# QuestRelay
+<div align="center">
+  <h1>QuestRelay</h1>
+  <p><strong>Stream Meta Quest video and supported game audio to a shared browser room</strong></p>
+  <p>
+    <a href="https://github.com/uqrealitylabs/questrelay/actions/workflows/check.yml"><img alt="Check status" src="https://github.com/uqrealitylabs/questrelay/actions/workflows/check.yml/badge.svg?branch=main"></a>
+    <a href="https://github.com/uqrealitylabs/questrelay/actions/workflows/security.yml"><img alt="Security status" src="https://github.com/uqrealitylabs/questrelay/actions/workflows/security.yml/badge.svg?branch=main"></a>
+  </p>
+  <img src="docs/assets/questrelay-poster.webp" alt="A capybara wearing a VR headset as three Quest feeds converge into one browser room" width="100%">
+  <p>
+    <a href="https://cast.uqrealitylabs.com"><img alt="Open the hosted room" src="https://img.shields.io/badge/Open_the_hosted_room-5865F2?style=for-the-badge&logo=cloudflare&logoColor=white"></a>
+    <a href="docs/ARCHITECTURE.md"><img alt="See how it works" src="https://img.shields.io/badge/See_how_it_works-24252D?style=for-the-badge&logo=readthedocs&logoColor=white"></a>
+  </p>
+</div>
 
-**Meta Quest livestreams you can watch together in a browser**
+The headset companion app captures with the wearer's permission, publishes H.264 and Opus, and keeps the publisher key in Android Keystore. Viewers choose feeds and control their own layout and audio; operators manage access, capture and connection diagnostics
 
-QuestRelay shares Meta Quest video and supported game audio in a browser. The wearer starts sharing in the companion app and approves capture; viewers open a link. Put several headsets in one room for a playtest or demo, or share a short `/livestream/<id>` link for one feed
-
-The browser lets each viewer pin a feed, change the layout, mute audio and choose a theme. Admins get a separate control room for public or private access, headset video and audio controls, and the connection stats that help when a stream goes wrong. The room's animated capybara has a name, mood and accessory you can customise
-
-The Cloudflare path uses a Rust Worker and Cloudflare Realtime SFU to forward H.264 and Opus over WebRTC. A single-host Rust relay remains available for local and Docker deployments. Both paths aim to keep delay low; [measured latency and multi-headset capacity are still open work](#current-status)
-
-## Host on Cloudflare
-
-The [Cloudflare guide](docs/CLOUDFLARE.md) walks through the free-tier setup, secrets, deployment and Quest APK. The hosted site is [cast.uqrealitylabs.com](https://cast.uqrealitylabs.com). Run `tools/scripts/deploy.sh cf` for later updates
-
-The free Realtime allowance is 1,000 GB of combined SFU and TURN egress per month, not a hard usage cap. Check usage in Cloudflare during tests
-
-## Get it running locally
-
-You need Node.js 22+, Rust and the [mediasoup build prerequisites](https://mediasoup.org/documentation/v3/mediasoup/installation/). Clone the repository and install the web dependencies:
-
-```bash
-git clone https://github.com/uqrealitylabs/questrelay.git
-cd questrelay
-npm ci
+```mermaid
+flowchart LR
+    Q["🥽 Quest capture"] --> R{"Relay path"}
+    R --> C["☁️ Cloudflare Realtime"]
+    R --> L["🦀 Rust + mediasoup"]
+    C --> B["🖥️ Shared browser room"]
+    L --> B
 ```
 
-In your first terminal, make three different local keys and start the relay:
+## 🚀 Deploy
+
+| | Best for | Start here |
+| --- | --- | --- |
+| ☁️ **Cloudflare** | Hosted demos without a relay VM | [`docs/CLOUDFLARE.md`](docs/CLOUDFLARE.md) |
+| 🐳 **Docker Compose** | A public server or controlled LAN | [`docs/LOCAL.md`](docs/LOCAL.md) |
+
+### Cloudflare
+
+Deploy the Worker and web app, then provision an authorised Quest over USB:
 
 ```bash
-export QUESTRELAY_PUBLISH_KEY="$(openssl rand -hex 32)"
-export QUESTRELAY_VIEW_KEY="$(openssl rand -hex 32)"
-export QUESTRELAY_ADMIN_KEY="$(openssl rand -hex 32)"
-printf 'Admin key: %s\nPublisher key: %s\n' "$QUESTRELAY_ADMIN_KEY" "$QUESTRELAY_PUBLISH_KEY"
-npm run dev:server
+tools/scripts/deploy.sh cf
+tools/scripts/deploy.sh adb devices
+tools/scripts/deploy.sh headset YOUR_ADB_ID
 ```
 
-Keep those printed keys private. In a second terminal, run `npm run dev:web` and open the address Vite prints. Sign in at `/admin` with the admin key, then make the room public by link or set a private access code. New rooms start private
+The first deployment also needs D1, Realtime and Worker secrets. Follow the [Cloudflare guide](docs/CLOUDFLARE.md)
 
-### Run both services on a LAN with HTTPS
-
-The LAN Compose stack runs the Rust relay and browser app together, publishes HTTPS on ports 80 and 443, and publishes WebRTC media on TCP and UDP 44444. It uses Caddy's private certificate authority so it works without a public domain
+### Docker Compose
 
 ```bash
 cp tools/config/.env.example .env
 chmod 600 .env
-```
-
-Set `QUESTRELAY_DOMAIN` and `QUESTRELAY_RTC_ANNOUNCED_ADDRESS` to the host's stable LAN IP, set `QUESTRELAY_TLS="tls internal"`, clear `QUESTRELAY_WEBAUTHN_ORIGIN`, and generate three different keys with `openssl rand -hex 32`, then start the stack:
-
-```bash
+# Fill in the domain, relay address and three different 32+ character keys
 tools/scripts/deploy.sh dc
 ```
 
-Caddy creates a LAN certificate authority in the persistent `caddy_data` volume. The deploy command exports its public certificate to `questrelay-lan-ca.crt`; trust it in each viewing browser before connecting
+The same Compose file supports a public server or an HTTPS LAN. The [local and single-host guide](docs/LOCAL.md) covers TLS modes, ports, private LAN certificates, backups and remote releases
 
-Open `https://<LAN-IP>` in browsers. The release Quest app needs a publicly trusted certificate because Android does not trust user-installed CAs by default. Allow TCP 80 and 443 plus TCP and UDP 44444 through the host firewall. The relay API stays private to the Compose network
+## 🛠️ Develop locally
 
-Use this stack only on an isolated LAN you control. Admin passkeys remain disabled because WebAuthn should use a stable hostname; admin-key login still works over the trusted HTTPS connection
-
-<details>
-<summary>Connect a Quest for a USB development test</summary>
-
-With JDK 17, Go 1.26, Gradle 9.6, Android SDK platform 35, NDK `27.2.12479018` and ADB installed, set `ANDROID_HOME` and `ANDROID_NDK_HOME`, then run this from the repository root:
+Install Node.js 22+, Rust and the [mediasoup build prerequisites](https://mediasoup.org/documentation/v3/mediasoup/installation/), then run:
 
 ```bash
-tools/scripts/deploy.sh adb devices
-tools/scripts/deploy.sh adb send YOUR_ADB_ID
-adb -s YOUR_ADB_ID reverse tcp:8788 tcp:8788
+npm ci
+export QUESTRELAY_PUBLISH_KEY="$(openssl rand -hex 32)"
+export QUESTRELAY_VIEW_KEY="$(openssl rand -hex 32)"
+export QUESTRELAY_ADMIN_KEY="$(openssl rand -hex 32)"
+npm run dev:server
 ```
 
-Repeat `adb send` with each Quest's ADB ID. In each debug app, set the relay URL to `ws://127.0.0.1:8788/ws/relay` and enter the publisher key printed earlier. Give each headset a distinct name, start sharing and approve the Quest's capture prompts. A normal user install will need a signed app distributed through a supported [Meta release channel](https://developers.meta.com/horizon/resources/publish-release-channels/); the USB route is for development
+Run `npm run dev:web` in a second terminal and open the address Vite prints. New rooms start private; sign in at `/admin` with the generated admin key to change access
 
-</details>
+## 🧭 Project map
 
-## Where to work
-
-| If you're changing… | Start here |
+| Area | Source |
 | --- | --- |
-| The public room or admin experience | [`frontend/src`](frontend/src/) |
-| Cloudflare room access and signalling | [`backend/edge`](backend/edge/) |
-| Single-host relay and local WebRTC | [`backend/src`](backend/src/) |
-| Headset capture, app settings or Cloudflare transport | [`quest/app`](quest/app/) and [`quest/transport`](quest/transport/) |
-| Deployment and release tooling | [`tools/config`](tools/config/) and [`tools/scripts`](tools/scripts/) |
+| Browser room and operator UI | [`frontend/src`](frontend/src/) |
+| Cloudflare Worker and Realtime signalling | [`backend/edge`](backend/edge/) |
+| Single-host Rust relay | [`backend/src`](backend/src/) |
+| Quest capture and transport | [`quest/app`](quest/app/) and [`quest/transport`](quest/transport/) |
+| Deployment | [`tools/config`](tools/config/) and [`tools/scripts`](tools/scripts/) |
 
-The older ADB/scrcpy experiment lives in [`quest/prototype-server`](quest/prototype-server/) and is outside the current media path. [How QuestRelay works](docs/ARCHITECTURE.md) follows a feed from the headset to the browser and explains the trust boundaries
+## ✅ Check a change
 
-## Build and check
+```bash
+npm test
+npm run build
+```
 
-Run `npm run build` for the web app and single-host Rust relay, or `npm test` for their checks. The Cloudflare Worker has separate `cargo test --manifest-path backend/edge/Cargo.toml` and Wasm Clippy checks. The Quest transport runs `go test ./...` in `quest/transport`; its APK build is in the expandable setup above and the [Cloudflare guide](docs/CLOUDFLARE.md). For a pull request, see the focused checks in the [contribution guide](docs/CONTRIBUTING.md)
+Component-specific checks and toolchain versions are in the [contribution guide](.github/docs/CONTRIBUTING.md)
 
-## Put it on a server
+## 📚 Reference
 
-Use [Cloudflare](docs/CLOUDFLARE.md) for the hosted test without a VM. The [single-host guide](docs/DEPLOY.md) covers Docker Compose, DNS, firewall rules and backups when you want to operate your own relay
+- [Architecture, trust boundaries and remaining device tests](docs/ARCHITECTURE.md)
+- [Cloudflare deployment](docs/CLOUDFLARE.md)
+- [Docker, LAN and server deployment](docs/LOCAL.md)
+- [Release history](docs/CHANGELOG.md)
+- [Security reporting](.github/docs/SECURITY.md)
+- [Code of Conduct](.github/docs/CODE_OF_CONDUCT.md)
 
-## Current status
-
-Two Quest 3 headsets have connected individually to the deployed Cloudflare relay. Safari received H.264 video and an Opus audio track from the first. In Beat Saber, a 60 fps capture target produced about 29–30 encoded fps at both 1080p and 720p, even while the game renderer reported 90 fps. The 720p profile used less bandwidth and one receiver sample showed 0% recent video loss. Stable 60 fps, zero packet loss, audible game audio, simultaneous headset capacity, release-channel installation and glass-to-glass latency have not been verified. The Cloudflare control room currently uses an admin key because passkeys and multi-admin management have not yet been ported from the single-host backend
-
-QuestRelay is maintained by UQ Reality Labs. Before contributing, read the [contribution guide](docs/CONTRIBUTING.md), [Code of Conduct](docs/CODE_OF_CONDUCT.md) and [security policy](docs/SECURITY.md). The project uses a [custom modified MIT-style licence](LICENSE), not standard MIT; commercial use and AI training require separate permission
-
-The [release history](docs/CHANGELOG.md) and [GitHub releases](https://github.com/uqrealitylabs/questrelay/releases) show what changed in each version and which builds you can download
+QuestRelay uses a [custom modified MIT-style licence](LICENSE). Commercial use and AI training require separate permission
