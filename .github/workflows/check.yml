@@ -101,7 +101,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: quest/transport/go.mod
           cache-dependency-path: quest/transport/go.sum
