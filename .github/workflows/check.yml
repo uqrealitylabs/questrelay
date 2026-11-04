@@ -10,28 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  detect:
-    runs-on: ubuntu-latest
-    outputs:
-      web: ${{ steps.paths.outputs.web }}
-      backend: ${{ steps.paths.outputs.backend }}
-      edge: ${{ steps.paths.outputs.edge }}
-      quest: ${{ steps.paths.outputs.quest }}
-      deploy: ${{ steps.paths.outputs.deploy }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - id: paths
-        env:
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD: ${{ github.event.pull_request.head.sha }}
-          BEFORE: ${{ github.event.before }}
-        run: tools/scripts/changes.sh >> "$GITHUB_OUTPUT"
-
   web:
-    needs: detect
-    if: needs.detect.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -49,22 +28,21 @@ jobs:
       - run: npm run build -w @questrelay/web
 
   deploy:
-    needs: detect
-    if: needs.detect.outputs.deploy == 'true'
     runs-on: ubuntu-latest
+    env:
+      QUESTRELAY_ADMIN_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      QUESTRELAY_PUBLISH_KEY: pppppppppppppppppppppppppppppppp
+      QUESTRELAY_VIEW_KEY: vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
     steps:
       - uses: actions/checkout@v7
       - run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
           shellcheck tools/scripts/*.sh
-          bash tools/scripts/changes.test.sh
           cp tools/config/.env.example .env
           docker compose -f tools/config/compose.yaml --project-directory . config --quiet
 
   backend:
-    needs: detect
-    if: needs.detect.outputs.backend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -87,8 +65,6 @@ jobs:
       - run: cargo clippy --manifest-path backend/Cargo.toml --locked -- -D warnings
 
   edge:
-    needs: detect
-    if: needs.detect.outputs.edge == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -118,8 +94,6 @@ jobs:
         working-directory: backend/edge
 
   quest:
-    needs: detect
-    if: needs.detect.outputs.quest == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

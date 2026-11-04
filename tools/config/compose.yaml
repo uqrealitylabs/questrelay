@@ -3,19 +3,26 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    env_file: .env
     environment:
+      QUESTRELAY_ADMIN_KEY: ${QUESTRELAY_ADMIN_KEY:?Set QUESTRELAY_ADMIN_KEY}
+      QUESTRELAY_EGRESS_BUDGET_MBPS: ${QUESTRELAY_EGRESS_BUDGET_MBPS:-200}
+      QUESTRELAY_MAX_HEADSETS: ${QUESTRELAY_MAX_HEADSETS:-8}
+      QUESTRELAY_MAX_VIEWERS: ${QUESTRELAY_MAX_VIEWERS:-64}
+      QUESTRELAY_PUBLISH_KEY: ${QUESTRELAY_PUBLISH_KEY:?Set QUESTRELAY_PUBLISH_KEY}
       QUESTRELAY_SIGNAL_HOST: 0.0.0.0
       QUESTRELAY_RTC_LISTEN_IP: 0.0.0.0
-      QUESTRELAY_RTC_ANNOUNCED_ADDRESS: ${QUESTRELAY_RTC_ANNOUNCED_ADDRESS:?Set the public relay host}
-      QUESTRELAY_WEBAUTHN_ORIGIN: https://${QUESTRELAY_DOMAIN:?Set the public web domain}
+      QUESTRELAY_RTC_ANNOUNCED_ADDRESS: ${QUESTRELAY_RTC_ANNOUNCED_ADDRESS:?Set the relay address}
+      QUESTRELAY_WEBAUTHN_ORIGIN: ${QUESTRELAY_WEBAUTHN_ORIGIN:-}
       QUESTRELAY_STATE_PATH: /var/lib/questrelay/site.json
+      QUESTRELAY_VIEW_KEY: ${QUESTRELAY_VIEW_KEY:?Set QUESTRELAY_VIEW_KEY}
     volumes:
       - relay_data:/var/lib/questrelay
     ports:
-      - "44444:44444/udp"
-      - "44444:44444/tcp"
+      - "0.0.0.0:44444:44444/udp"
+      - "0.0.0.0:44444:44444/tcp"
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
 
   web:
     build:
@@ -23,17 +30,27 @@ services:
       dockerfile: frontend/Dockerfile
     environment:
       QUESTRELAY_DOMAIN: ${QUESTRELAY_DOMAIN:?Set the public web domain}
+      QUESTRELAY_TLS: ${QUESTRELAY_TLS:-}
       QUESTRELAY_UPSTREAM: relay:8788
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+      - "0.0.0.0:443:443/udp"
     depends_on:
-      - relay
+      relay:
+        condition: service_healthy
     volumes:
       - caddy_data:/data
       - caddy_config:/config
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   relay_data:

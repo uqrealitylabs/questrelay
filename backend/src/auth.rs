@@ -60,6 +60,7 @@ pub struct Auth {
 impl Auth {
     pub fn open(path: PathBuf, origin: Option<String>) -> Result<Self> {
         let webauthn = origin
+            .filter(|value| !value.is_empty())
             .map(|value| -> Result<Webauthn> {
                 let url = Url::parse(&value).context("Invalid QUESTRELAY_WEBAUTHN_ORIGIN")?;
                 let host = url.host_str().context("WebAuthn origin needs a host")?;
@@ -435,5 +436,19 @@ impl Auth {
             "Challenge expired or invalid"
         );
         Ok(pending)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_origin_disables_passkeys() -> Result<()> {
+        let path = std::env::temp_dir().join(format!("questrelay-auth-{}.json", random_token()));
+        let auth = Auth::open(path.clone(), Some(String::new()))?;
+        assert!(!auth.enabled());
+        fs::remove_file(path)?;
+        Ok(())
     }
 }

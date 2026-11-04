@@ -26,7 +26,7 @@ npx wrangler d1 create questrelay-edge
 
 Put the returned D1 database ID in [`backend/edge/wrangler.toml`](../backend/edge/wrangler.toml). Create a Serverless SFU app in the Cloudflare dashboard and put its **App ID** in the same file as `SFU_APP_ID`. The **App Secret** stays out of Git and is entered through Wrangler
 
-The Cloudflare account is already configured with a D1 database and a Worker named `questrelay`. Its address is `https://questrelay.iamkeys-1111.workers.dev`
+The Cloudflare account is already configured with a D1 database and a Worker named `questrelay`. Its address is `https://cast.uqrealitylabs.com`
 
 ## Set the three secrets
 
@@ -47,8 +47,8 @@ The existing staging admin and publisher keys are already bound and have a local
 Run the schema step once for a new D1 database, then use the same script without `--init-db` for future code changes
 
 ```bash
-tools/scripts/deploy.sh cloudflare --init-db
-curl -f https://YOUR-WORKER.workers.dev/health
+tools/scripts/deploy.sh cf --init-db
+curl -f https://cast.uqrealitylabs.com/health
 ```
 
 `/health` returns `503` until all three secrets are present. Once it returns `200`, open `/admin` and sign in with the admin key. The public lounge is at `/`, and each connected headset gets a short `/livestream/<id>` link that an admin can make public or protect with an access code

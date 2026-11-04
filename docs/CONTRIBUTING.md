@@ -39,4 +39,4 @@ bash tools/scripts/build-transport.sh
 gradle -p quest/app :app:testDebugUnitTest :app:assembleDebug --no-daemon
 ```
 
-For release or deployment script changes, run `shellcheck tools/scripts/*.sh`, `bash tools/scripts/changes.test.sh` and `docker compose -f tools/config/compose.yaml --project-directory . config --quiet` after preparing `.env` as shown in the [deployment guide](DEPLOY.md). GitHub Actions runs the checks relevant to the files changed in each pull request
+For release or deployment script changes, run `shellcheck tools/scripts/*.sh` and `docker compose -f tools/config/compose.yaml --project-directory . config --quiet` after preparing `.env` as shown in the [deployment guide](DEPLOY.md). GitHub Actions runs every project check for each pull request

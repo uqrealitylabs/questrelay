@@ -1,7 +1,9 @@
 name = "questrelay"
+account_id = "ca120265a1ff5ecd9af28d2cf18e4789"
 main = "build/index.js"
 compatibility_date = "2026-09-30"
-workers_dev = true
+workers_dev = false
+routes = [{ pattern = "cast.uqrealitylabs.com", custom_domain = true }]
 
 [triggers]
 crons = ["0 4 * * *"]
@@ -18,7 +20,7 @@ run_worker_first = ["/api/*", "/health"]
 [[d1_databases]]
 binding = "DB"
 database_name = "questrelay-edge"
-database_id = "48db78e5-6f6b-4a46-b2c0-0fb7e2e3250d"
+database_id = "a3efd7db-3996-47e5-9a6e-83b85f676ae6"
 
 [vars]
-SFU_APP_ID = "4114cfaa5e60defd5a771dd36c906a27"
+SFU_APP_ID = "18f605d23a21ff65b640aca4f8bae12d"

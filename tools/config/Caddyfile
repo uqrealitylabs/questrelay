@@ -1,4 +1,5 @@
-{$QUESTRELAY_DOMAIN} {
+https://{$QUESTRELAY_DOMAIN} {
+    {$QUESTRELAY_TLS}
     encode zstd gzip
 
     @backend path /api/* /ws/* /health

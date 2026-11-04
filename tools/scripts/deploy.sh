@@ -6,7 +6,8 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 usage() {
   cat >&2 <<'USAGE'
 Usage:
-  tools/scripts/deploy.sh cloudflare [--init-db]
+  tools/scripts/deploy.sh cf [--init-db]
+  tools/scripts/deploy.sh dc
   tools/scripts/deploy.sh server <ssh-target> <release-archive> [env-file]
   tools/scripts/deploy.sh adb devices
   tools/scripts/deploy.sh adb send <adb-id>
@@ -19,7 +20,7 @@ USAGE
 
 (( $# > 0 )) || usage
 case $1 in
-  cloudflare)
+  cf|cloudflare)
     shift
     if (( $# > 1 )) || [[ ${1:-} != '' && ${1:-} != --init-db ]]; then usage; fi
     if ! command -v worker-build >/dev/null; then
@@ -34,6 +35,46 @@ case $1 in
       npx --yes wrangler@4.144.0 d1 execute questrelay-edge --remote --file schema.sql
     fi
     npx --yes wrangler@4.144.0 deploy
+    exit 0
+    ;;
+  dc)
+    shift
+    (( $# == 0 )) || usage
+    env_file=$root/.env
+    [[ -f $env_file ]] || {
+      echo 'Create .env from tools/config/.env.example before deploying' >&2
+      exit 2
+    }
+    command -v docker >/dev/null || {
+      echo 'Docker with the Compose plugin is required' >&2
+      exit 1
+    }
+    docker compose version >/dev/null
+    compose=(
+      docker compose
+      --env-file "$env_file"
+      -f "$root/tools/config/compose.yaml"
+      --project-directory "$root"
+    )
+    "${compose[@]}" config --quiet
+    "${compose[@]}" up -d --build --wait --wait-timeout 180
+
+    environment=$("${compose[@]}" config --environment)
+    domain=$(awk -F= '$1 == "QUESTRELAY_DOMAIN" {print substr($0, index($0, "=") + 1); exit}' <<<"$environment")
+    tls=$(awk -F= '$1 == "QUESTRELAY_TLS" {print substr($0, index($0, "=") + 1); exit}' <<<"$environment")
+    printf 'QuestRelay ready at https://%s\n' "$domain"
+    printf 'Quest relay: wss://%s/ws/relay\n' "$domain"
+    if [[ $tls == 'tls internal' ]]; then
+      certificate=$root/questrelay-lan-ca.crt
+      temporary=$(mktemp "$root/.questrelay-lan-ca.XXXXXX")
+      trap 'rm -f "$temporary"' EXIT
+      "${compose[@]}" cp \
+        web:/data/caddy/pki/authorities/local/root.crt "$temporary"
+      chmod 644 "$temporary"
+      mv "$temporary" "$certificate"
+      trap - EXIT
+      printf 'Trust this CA on each client: %s\n' "$certificate"
+    fi
     exit 0
     ;;
   adb)

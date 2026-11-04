@@ -10,7 +10,7 @@ The Cloudflare path uses a Rust Worker and Cloudflare Realtime SFU to forward H.
 
 ## Host on Cloudflare
 
-The [Cloudflare guide](docs/CLOUDFLARE.md) walks through the free-tier setup, secrets, deployment and Quest APK. The hosted site is [questrelay.iamkeys-1111.workers.dev](https://questrelay.iamkeys-1111.workers.dev). Run `tools/scripts/deploy.sh cloudflare` for later updates
+The [Cloudflare guide](docs/CLOUDFLARE.md) walks through the free-tier setup, secrets, deployment and Quest APK. The hosted site is [cast.uqrealitylabs.com](https://cast.uqrealitylabs.com). Run `tools/scripts/deploy.sh cf` for later updates
 
 The free Realtime allowance is 1,000 GB of combined SFU and TURN egress per month, not a hard usage cap. Check usage in Cloudflare during tests
 
@@ -35,6 +35,27 @@ npm run dev:server
 ```
 
 Keep those printed keys private. In a second terminal, run `npm run dev:web` and open the address Vite prints. Sign in at `/admin` with the admin key, then make the room public by link or set a private access code. New rooms start private
+
+### Run both services on a LAN with HTTPS
+
+The LAN Compose stack runs the Rust relay and browser app together, publishes HTTPS on ports 80 and 443, and publishes WebRTC media on TCP and UDP 44444. It uses Caddy's private certificate authority so it works without a public domain
+
+```bash
+cp tools/config/.env.example .env
+chmod 600 .env
+```
+
+Set `QUESTRELAY_DOMAIN` and `QUESTRELAY_RTC_ANNOUNCED_ADDRESS` to the host's stable LAN IP, set `QUESTRELAY_TLS="tls internal"`, clear `QUESTRELAY_WEBAUTHN_ORIGIN`, and generate three different keys with `openssl rand -hex 32`, then start the stack:
+
+```bash
+tools/scripts/deploy.sh dc
+```
+
+Caddy creates a LAN certificate authority in the persistent `caddy_data` volume. The deploy command exports its public certificate to `questrelay-lan-ca.crt`; trust it in each viewing browser before connecting
+
+Open `https://<LAN-IP>` in browsers. The release Quest app needs a publicly trusted certificate because Android does not trust user-installed CAs by default. Allow TCP 80 and 443 plus TCP and UDP 44444 through the host firewall. The relay API stays private to the Compose network
+
+Use this stack only on an isolated LAN you control. Admin passkeys remain disabled because WebAuthn should use a stable hostname; admin-key login still works over the trusted HTTPS connection
 
 <details>
 <summary>Connect a Quest for a USB development test</summary>
